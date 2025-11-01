@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Set the new font and background for the app */
+body {
+  @apply bg-gray-100 font-sans text-gray-900;
+}

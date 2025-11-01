@@ -1,0 +1,12 @@
+[
+  {
+    "origin": [
+      "http://localhost:5173",
+      "https://lab-analysis-6ef74.web.app",
+      "https://lab-analysis-6ef74.firebaseapp.com"
+    ],
+    "method": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Access-Control-Allow-Origin"],
+    "maxAgeSeconds": 3600
+  }
+]
