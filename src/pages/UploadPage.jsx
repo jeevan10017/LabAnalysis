@@ -9,7 +9,8 @@ import { useAuthStore } from '../hooks/useAuthStore';
 import { AVAILABLE_CALCULATIONS, runAnalysis } from '../lib/analysis';
 import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
-import { FaFileExcel, FaArrowRight, FaKeyboard, FaPlus } from 'react-icons/fa';
+// --- ADDED OCR ICON ---
+import { FaFileExcel, FaArrowRight, FaKeyboard, FaPlus, FaRegHandPaper } from 'react-icons/fa';
 import { RadioGroup } from '@headlessui/react';
 import { read, utils } from 'xlsx';
 
@@ -18,6 +19,7 @@ import FileDropzone from '../components/upload/FileDropzone';
 import ManualDataEntry from '../components/upload/ManualDataEntry';
 import ColumnMapper from '../components/upload/ColumnMapper';
 import AnalysisSelector from '../components/upload/AnalysisSelector';
+import OcrDropzone from '../components/upload/OcrDropzone'; // <-- NEW
 
 // --- Helper Components ---
 
@@ -27,18 +29,19 @@ const UploadMethodSelector = ({ onSelect }) => {
   const [formulaMethod, setFormulaMethod] = useState('inbuilt');
 
   return (
-    <div className="w-full space-y-6  bg-white p-6 shadow">
+    <div className="w-full space-y-6 rounded-lg bg-white p-6 shadow">
       {/* Data Input Method */}
       <div>
         <h3 className="text-lg font-semibold text-gray-800">
           1. How do you want to add data?
         </h3>
         <RadioGroup value={dataMethod} onChange={setDataMethod} className="mt-2">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* --- UPDATED GRID TO 3 COLUMNS --- */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <RadioGroup.Option
               value="file"
               className={({ checked }) =>
-                `cursor-pointer  border p-4 ${
+                `cursor-pointer rounded-lg border p-4 ${
                   checked
                     ? 'border-primary bg-primary-light'
                     : 'border-secondary-DEFAULT'
@@ -51,10 +54,11 @@ const UploadMethodSelector = ({ onSelect }) => {
               </div>
               <p className="text-sm text-secondary-dark mt-1">.xlsx, .xls, or .csv</p>
             </RadioGroup.Option>
+            
             <RadioGroup.Option
               value="manual"
               className={({ checked }) =>
-                `cursor-pointer  border p-4 ${
+                `cursor-pointer rounded-lg border p-4 ${
                   checked
                     ? 'border-primary bg-primary-light'
                     : 'border-secondary-DEFAULT'
@@ -67,6 +71,25 @@ const UploadMethodSelector = ({ onSelect }) => {
               </div>
               <p className="text-sm text-secondary-dark mt-1">Input data in a table</p>
             </RadioGroup.Option>
+            
+            {/* --- NEW OCR OPTION --- */}
+            <RadioGroup.Option
+              value="ocr"
+              className={({ checked }) =>
+                `cursor-pointer rounded-lg border p-4 ${
+                  checked
+                    ? 'border-primary bg-primary-light'
+                    : 'border-secondary-DEFAULT'
+                }`
+              }
+            >
+              <div className="flex items-center">
+                <FaRegHandPaper className="h-6 w-6 text-primary-dark" />
+                <span className="ml-3 font-medium">Handwritten</span>
+              </div>
+              <p className="text-sm text-secondary-dark mt-1">Scan from an image</p>
+            </RadioGroup.Option>
+
           </div>
         </RadioGroup>
       </div>
@@ -85,7 +108,7 @@ const UploadMethodSelector = ({ onSelect }) => {
             <RadioGroup.Option
               value="inbuilt"
               className={({ checked }) =>
-                `cursor-pointer  border p-4 ${
+                `cursor-pointer rounded-lg border p-4 ${
                   checked
                     ? 'border-primary bg-primary-light'
                     : 'border-secondary-DEFAULT'
@@ -100,7 +123,7 @@ const UploadMethodSelector = ({ onSelect }) => {
             <RadioGroup.Option
               value="custom"
               className={({ checked }) =>
-                `cursor-pointer  border p-4 ${
+                `cursor-pointer rounded-lg border p-4 ${
                   checked
                     ? 'border-primary bg-primary-light'
                     : 'border-secondary-DEFAULT'
@@ -140,7 +163,7 @@ const FinalizeExperiment = ({ onSave, onCancel }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full space-y-4  bg-white p-6 shadow">
+    <form onSubmit={handleSubmit} className="w-full space-y-4 rounded-lg bg-white p-6 shadow">
       <h3 className="text-lg font-semibold text-gray-800">Save Your Experiment</h3>
       <div>
         <label htmlFor="title" className="block text-sm font-medium text-gray-700">Title</label>
@@ -197,6 +220,10 @@ export default function UploadPage() {
   const [headers, setHeaders] = useState([]);
   const [columnMap, setColumnMap] = useState({});
   const [processedData, setProcessedData] = useState(null);
+  
+  // --- NEW STATE FOR OCR DATA ---
+  const [ocrData, setOcrData] = useState(null);
+
   const { user } = useAuthStore();
   const navigate = useNavigate();
 
@@ -206,9 +233,10 @@ export default function UploadPage() {
 
       let storagePath = null;
 
-      // Only upload file if one was provided
-      if (uploadOptions.dataMethod === 'file' && file) {
-        storagePath = `uploads/${user.uid}/${uuidv4()}-${file.name}`;
+      // Only upload file if one was provided (file or ocr image)
+      if (file) {
+        const fileType = uploadOptions.dataMethod === 'ocr' ? 'images' : 'uploads';
+        storagePath = `${fileType}/${user.uid}/${uuidv4()}-${file.name}`;
         const storageRef = ref(storage, storagePath);
         await uploadBytes(storageRef, file);
       }
@@ -222,7 +250,7 @@ export default function UploadPage() {
         title,
         description,
         isPublic,
-        storagePath, // Null if manual
+        storagePath, // Path to original file (Excel or Image)
         createdAt: serverTimestamp(),
         headers: Object.keys(processedData.data[0]),
         data: processedData.data,
@@ -247,7 +275,7 @@ export default function UploadPage() {
 
   const handleFileAccepted = (acceptedFiles) => {
     const file = acceptedFiles[0];
-    setFile(file);
+    setFile(file); // Save file for later upload
     const reader = new FileReader();
 
     reader.onload = (event) => {
@@ -265,21 +293,30 @@ export default function UploadPage() {
     reader.readAsBinaryString(file);
   };
   
+  // --- NEW HANDLER FOR OCR ---
+  const handleOcrComplete = ({ data, columns, imageFile }) => {
+    setFile(imageFile); // Save image file for later upload
+    setOcrData({ data, columns });
+    setUploadOptions(prev => ({ ...prev, dataMethod: 'manual' }));
+    // Step is already 1, so ManualDataEntry will render with this new data
+  };
+
   const handleManualDataSubmitted = ({ data, columns }) => {
     // Convert array of strings to array of objects
     const jsonData = data.map(row => {
       let rowObj = {};
       columns.forEach((col, index) => {
-        // Attempt to convert to number
-        const val = row[index];
+        const val = row[index] || '';
         const numVal = parseFloat(val);
-        rowObj[col.name] = isNaN(numVal) ? val : numVal;
+        // Check if val is a number, but not just an empty string
+        rowObj[col.name] = !isNaN(numVal) && val.trim() !== '' ? numVal : val;
       });
       return rowObj;
     });
 
     setOriginalData(jsonData);
     setHeaders(columns.map(c => c.name));
+    setOcrData(null); // Clear OCR data
     setStep(2); // Go to ColumnMapper
   };
 
@@ -289,19 +326,17 @@ export default function UploadPage() {
   };
 
   const handleAnalysisComplete = (selectedCalculations) => {
-    // 'selectedCalculations' is now an array of calculation objects
     const calcIds = selectedCalculations.map(c => c.id);
     const { newData, newHeaders } = runAnalysis(originalData, columnMap, selectedCalculations);
     
     setProcessedData({
       data: newData,
       analysis: {
-        selectedIds: calcIds, // Store IDs for easy lookup
+        selectedIds: calcIds, 
         newHeaders,
         originalHeaders: headers,
         map: columnMap,
-        // Store custom formula details
-        calculations: selectedCalculations.map(({id, name, formula, func, ...rest}) => ({id, name, formula}))
+        calculations: selectedCalculations.map(({id, name, formula}) => ({id, name, formula}))
       }
     });
     setStep(4);
@@ -318,6 +353,7 @@ export default function UploadPage() {
     setHeaders([]);
     setColumnMap({});
     setProcessedData(null);
+    setOcrData(null); // <-- Clear OCR data
   }
 
   return (
@@ -326,7 +362,7 @@ export default function UploadPage() {
         Create New Experiment
       </h1>
 
-      <div className="relative ">
+      <div className="relative rounded-lg">
         {/* Render current step */}
         {step === 0 && (
           <UploadMethodSelector onSelect={handleOptionsSelected} />
@@ -337,13 +373,23 @@ export default function UploadPage() {
         )}
         
         {step === 1 && uploadOptions.dataMethod === 'manual' && (
-          <ManualDataEntry onSubmit={handleManualDataSubmitted} />
+          <ManualDataEntry 
+            onSubmit={handleManualDataSubmitted}
+            // Pass OCR data if it exists
+            initialColumns={ocrData?.columns}
+            initialData={ocrData?.data}
+          />
+        )}
+
+        {/* --- NEW STEP FOR OCR --- */}
+        {step === 1 && uploadOptions.dataMethod === 'ocr' && (
+          <OcrDropzone onOcrComplete={handleOcrComplete} />
         )}
 
         {step === 2 && (
           <ColumnMapper
             detectedHeaders={headers}
-            availableCalculations={AVAILABLE_CALCULATIONS} // Pass this down
+            availableCalculations={AVAILABLE_CALCULATIONS} 
             onMapComplete={handleMapComplete}
           />
         )}
@@ -360,7 +406,7 @@ export default function UploadPage() {
         )}
 
         {isLoading && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center  bg-white/70">
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-white/70">
             <Spinner />
             <p className="mt-2 text-lg font-semibold text-primary-dark">
               Saving Experiment...

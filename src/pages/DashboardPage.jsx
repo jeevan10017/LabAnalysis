@@ -35,7 +35,7 @@ const EditModal = ({ experiment, onClose, onSave }) => {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 block w-full rounded-md border-secondary-DEFAULT shadow-sm focus:ring-primary focus:border-primary"
+              className="mt-1 block w-full  border-secondary-DEFAULT shadow-sm focus:ring-primary focus:border-primary"
             />
           </div>
           <div>
@@ -45,7 +45,7 @@ const EditModal = ({ experiment, onClose, onSave }) => {
               rows={3}
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
-              className="mt-1 block w-full rounded-md border-secondary-DEFAULT shadow-sm focus:ring-primary focus:border-primary"
+              className="mt-1 block w-full  border-secondary-DEFAULT shadow-sm focus:ring-primary focus:border-primary"
             />
           </div>
         </div>

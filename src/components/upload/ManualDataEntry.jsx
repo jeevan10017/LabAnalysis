@@ -1,16 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FaPlus, FaTrash, FaArrowRight } from 'react-icons/fa';
 import Button from '../common/Button';
 
-export default function ManualDataEntry({ onSubmit }) {
-  const [columns, setColumns] = useState([
-    { id: 'col1', name: 'Pressure' },
-    { id: 'col2', name: 'Volume' },
-  ]);
-  const [data, setData] = useState([
-    ['101', '2.0'],
-    ['105', '1.9'],
-  ]);
+// Set default empty state
+const defaultColumns = [
+  { id: 'col1', name: 'Pressure' },
+  { id: 'col2', name: 'Volume' },
+];
+const defaultData = [
+  ['101', '2.0'],
+  ['105', '1.9'],
+];
+
+export default function ManualDataEntry({ 
+  onSubmit, 
+  initialColumns, 
+  initialData 
+}) {
+  const [columns, setColumns] = useState(initialColumns || defaultColumns);
+  const [data, setData] = useState(initialData || defaultData);
+
+  // This effect updates the table if the props change (e.g., after OCR scan)
+  useEffect(() => {
+    if (initialColumns) setColumns(initialColumns);
+    if (initialData) setData(initialData);
+  }, [initialColumns, initialData]);
 
   const handleAddColumn = () => {
     const newColId = `col${columns.length + 1}`;
@@ -49,8 +63,16 @@ export default function ManualDataEntry({ onSubmit }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full space-y-4  bg-white p-6 shadow">
-      <h3 className="text-lg font-semibold text-gray-800">Enter Data Manually</h3>
+    <form onSubmit={handleSubmit} className="w-full space-y-4 rounded-lg bg-white p-6 shadow">
+      {/* Show a title based on whether data was scanned or not */}
+      <h3 className="text-lg font-semibold text-gray-800">
+        {initialData ? 'Review & Correct Scanned Data' : 'Enter Data Manually'}
+      </h3>
+      {initialData && (
+        <p className="text-sm text-secondary-dark -mt-2">
+          The data from your image has been pre-filled. Please review and correct any errors.
+        </p>
+      )}
       <div className="overflow-x-auto">
         <table className="min-w-full">
           <thead>
