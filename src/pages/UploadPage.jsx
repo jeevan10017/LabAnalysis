@@ -1,418 +1,265 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { v4 as uuidv4 } from 'uuid';
-import { useMutation } from '@tanstack/react-query';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes } from 'firebase/storage';
-import { db, storage } from '../config/firebase';
 import { useAuthStore } from '../hooks/useAuthStore';
-import { AVAILABLE_CALCULATIONS, runAnalysis } from '../lib/analysis';
+import { db, storage } from '../config/firebase';
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { useNavigate } from 'react-router-dom';
 import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
-// --- ADDED OCR ICON ---
-import { FaFileExcel, FaArrowRight, FaKeyboard, FaPlus, FaRegHandPaper } from 'react-icons/fa';
-import { RadioGroup } from '@headlessui/react';
-import { read, utils } from 'xlsx';
-
-// --- Import New Components ---
-import FileDropzone from '../components/upload/FileDropzone';
-import ManualDataEntry from '../components/upload/ManualDataEntry';
-import ColumnMapper from '../components/upload/ColumnMapper';
-import AnalysisSelector from '../components/upload/AnalysisSelector';
-import OcrDropzone from '../components/upload/OcrDropzone'; // <-- NEW
-
-// --- Helper Components ---
-
-// Step 0: Method Selection
-const UploadMethodSelector = ({ onSelect }) => {
-  const [dataMethod, setDataMethod] = useState('file');
-  const [formulaMethod, setFormulaMethod] = useState('inbuilt');
-
-  return (
-    <div className="w-full space-y-6 rounded-lg bg-white p-6 shadow">
-      {/* Data Input Method */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-800">
-          1. How do you want to add data?
-        </h3>
-        <RadioGroup value={dataMethod} onChange={setDataMethod} className="mt-2">
-          {/* --- UPDATED GRID TO 3 COLUMNS --- */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <RadioGroup.Option
-              value="file"
-              className={({ checked }) =>
-                `cursor-pointer rounded-lg border p-4 ${
-                  checked
-                    ? 'border-primary bg-primary-light'
-                    : 'border-secondary-DEFAULT'
-                }`
-              }
-            >
-              <div className="flex items-center">
-                <FaFileExcel className="h-6 w-6 text-primary-dark" />
-                <span className="ml-3 font-medium">Upload File</span>
-              </div>
-              <p className="text-sm text-secondary-dark mt-1">.xlsx, .xls, or .csv</p>
-            </RadioGroup.Option>
-            
-            <RadioGroup.Option
-              value="manual"
-              className={({ checked }) =>
-                `cursor-pointer rounded-lg border p-4 ${
-                  checked
-                    ? 'border-primary bg-primary-light'
-                    : 'border-secondary-DEFAULT'
-                }`
-              }
-            >
-              <div className="flex items-center">
-                <FaKeyboard className="h-6 w-6 text-primary-dark" />
-                <span className="ml-3 font-medium">Enter Manually</span>
-              </div>
-              <p className="text-sm text-secondary-dark mt-1">Input data in a table</p>
-            </RadioGroup.Option>
-            
-            {/* --- NEW OCR OPTION --- */}
-            <RadioGroup.Option
-              value="ocr"
-              className={({ checked }) =>
-                `cursor-pointer rounded-lg border p-4 ${
-                  checked
-                    ? 'border-primary bg-primary-light'
-                    : 'border-secondary-DEFAULT'
-                }`
-              }
-            >
-              <div className="flex items-center">
-                <FaRegHandPaper className="h-6 w-6 text-primary-dark" />
-                <span className="ml-3 font-medium">Handwritten</span>
-              </div>
-              <p className="text-sm text-secondary-dark mt-1">Scan from an image</p>
-            </RadioGroup.Option>
-
-          </div>
-        </RadioGroup>
-      </div>
-
-      {/* Formula Method */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-800">
-          2. How do you want to calculate?
-        </h3>
-        <RadioGroup
-          value={formulaMethod}
-          onChange={setFormulaMethod}
-          className="mt-2"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <RadioGroup.Option
-              value="inbuilt"
-              className={({ checked }) =>
-                `cursor-pointer rounded-lg border p-4 ${
-                  checked
-                    ? 'border-primary bg-primary-light'
-                    : 'border-secondary-DEFAULT'
-                }`
-              }
-            >
-              <div className="flex items-center">
-                <span className="ml-3 font-medium">Use In-built Formulas</span>
-              </div>
-              <p className="text-sm text-secondary-dark mt-1">e.g., Enthalpy, Energy</p>
-            </RadioGroup.Option>
-            <RadioGroup.Option
-              value="custom"
-              className={({ checked }) =>
-                `cursor-pointer rounded-lg border p-4 ${
-                  checked
-                    ? 'border-primary bg-primary-light'
-                    : 'border-secondary-DEFAULT'
-                }`
-              }
-            >
-              <div className="flex items-center">
-                <FaPlus className="h-5 w-5 text-primary-dark" />
-                <span className="ml-3 font-medium">Define Custom Formula</span>
-              </div>
-              <p className="text-sm text-secondary-dark mt-1">e.g., density = mass / vol</p>
-            </RadioGroup.Option>
-          </div>
-        </RadioGroup>
-      </div>
-
-      <Button
-        type="button"
-        className="w-full justify-center"
-        onClick={() => onSelect(dataMethod, formulaMethod)}
-      >
-        Continue <FaArrowRight className="ml-2" />
-      </Button>
-    </div>
-  );
-};
-
-// Step 4: Finalize and Save
-const FinalizeExperiment = ({ onSave, onCancel }) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [isPublic, setIsPublic] = useState(false);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSave({ title, description, isPublic });
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="w-full space-y-4 rounded-lg bg-white p-6 shadow">
-      <h3 className="text-lg font-semibold text-gray-800">Save Your Experiment</h3>
-      <div>
-        <label htmlFor="title" className="block text-sm font-medium text-gray-700">Title</label>
-        <input
-          type="text"
-          id="title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-          className="mt-1 block w-full  border-secondary-DEFAULT shadow-sm focus:border-primary focus:ring-primary"
-        />
-      </div>
-      <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</label>
-        <textarea
-          id="description"
-          rows={3}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="mt-1 block w-full  border-secondary-DEFAULT shadow-sm focus:border-primary focus:ring-primary"
-        />
-      </div>
-      <div className="flex items-start">
-        <input
-          id="isPublic"
-          type="checkbox"
-          checked={isPublic}
-          onChange={(e) => setIsPublic(e.target.checked)}
-          className="h-4 w-4 rounded border-secondary-DEFAULT text-primary focus:ring-primary"
-        />
-        <label htmlFor="isPublic" className="ml-3 block text-sm font-medium text-gray-700">
-          Make this experiment public?
-          <span className="block font-normal text-secondary-dark">Allows other users to view and "Extract" this data.</span>
-        </label>
-      </div>
-      <div className="flex justify-end space-x-3">
-        <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-        <Button type="submit">Save Experiment</Button>
-      </div>
-    </form>
-  )
-}
-
-// --- Main Page Component ---
+import * as XLSX from 'xlsx';
+import { FaUpload, FaFileExcel, FaInfoCircle } from 'react-icons/fa';
 
 export default function UploadPage() {
-  const [step, setStep] = useState(0); // 0 = chooser, 1 = input, 2 = map, 3 = analyze, 4 = save
-  const [uploadOptions, setUploadOptions] = useState({
-    dataMethod: 'file',
-    formulaMethod: 'inbuilt',
-  });
-  const [file, setFile] = useState(null);
-  const [originalData, setOriginalData] = useState([]);
-  const [headers, setHeaders] = useState([]);
-  const [columnMap, setColumnMap] = useState({});
-  const [processedData, setProcessedData] = useState(null);
-  
-  // --- NEW STATE FOR OCR DATA ---
-  const [ocrData, setOcrData] = useState(null);
-
   const { user } = useAuthStore();
   const navigate = useNavigate();
 
-  const { mutate, isLoading } = useMutation({
-    mutationFn: async ({ title, description, isPublic }) => {
-      if (!processedData || !user) throw new Error('Missing data or user');
+  const [file, setFile] = useState(null);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-      let storagePath = null;
-
-      // Only upload file if one was provided (file or ocr image)
-      if (file) {
-        const fileType = uploadOptions.dataMethod === 'ocr' ? 'images' : 'uploads';
-        storagePath = `${fileType}/${user.uid}/${uuidv4()}-${file.name}`;
-        const storageRef = ref(storage, storagePath);
-        await uploadBytes(storageRef, file);
-      }
-
-      const authorName = user.displayName || user.email;
-
-      const docRef = await addDoc(collection(db, 'experiments'), {
-        userId: user.uid,
-        authorEmail: user.email,
-        authorName: authorName,
-        title,
-        description,
-        isPublic,
-        storagePath, // Path to original file (Excel or Image)
-        createdAt: serverTimestamp(),
-        headers: Object.keys(processedData.data[0]),
-        data: processedData.data,
-        analysis: processedData.analysis,
-      });
-
-      return docRef.id;
-    },
-    onSuccess: (docId) => {
-      navigate(`/experiment/${docId}`);
-    },
-    onError: (error) => {
-      console.error('Error saving experiment:', error);
-      alert('Error saving experiment. Check console for details.');
-    },
-  });
-
-  const handleOptionsSelected = (dataMethod, formulaMethod) => {
-    setUploadOptions({ dataMethod, formulaMethod });
-    setStep(1); // Go to data input step
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile && (selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.csv'))) {
+      setFile(selectedFile);
+      setError('');
+    } else {
+      setFile(null);
+      setError('Please select a valid .xlsx or .csv file.');
+    }
   };
 
-  const handleFileAccepted = (acceptedFiles) => {
-    const file = acceptedFiles[0];
-    setFile(file); // Save file for later upload
-    const reader = new FileReader();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
 
-    reader.onload = (event) => {
-      const data = event.target.result;
-      const workbook = read(data, { type: 'binary' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const json = utils.sheet_to_json(worksheet);
+    if (!user) {
+      setError('You must be logged in to upload data.');
+      return;
+    }
+    if (!file) {
+      setError('Please select a file.');
+      return;
+    }
+    if (!title.trim()) {
+      setError('Please provide a title for your experiment.');
+      return;
+    }
 
-      setOriginalData(json);
-      setHeaders(Object.keys(json[0]));
-      setStep(2); // Go to ColumnMapper
-    };
+    setIsLoading(true);
 
-    reader.readAsBinaryString(file);
+    try {
+      // 1. Upload file to Firebase Storage
+      const storageRef = ref(storage, `uploads/${user.uid}/${Date.now()}-${file.name}`);
+      const uploadResult = await uploadBytes(storageRef, file);
+      const fileURL = await getDownloadURL(uploadResult.ref);
+
+      // 2. Parse File (XLSX or CSV)
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const data = new Uint8Array(event.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          
+          // --- NEW SMART PARSER LOGIC ---
+          // Read all data, with no headers, skipping the first row (the data itself)
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+          
+          if (jsonData.length < 3) {
+            throw new Error("File must contain at least 2 header rows and 1 data row.");
+          }
+
+          const headerRow = jsonData[0];
+          const unitRow = jsonData[1];
+          const dataRows = jsonData.slice(2);
+
+          const flattenedHeaders = [];
+          let currentMainHeader = '';
+
+          headerRow.forEach((header, index) => {
+            const mainHeader = (header !== null && !String(header).startsWith('Unnamed')) 
+                               ? String(header).trim() 
+                               : currentMainHeader;
+            
+            if (mainHeader) {
+                currentMainHeader = mainHeader;
+            }
+            
+            const subHeader = unitRow[index] ? String(unitRow[index]).trim() : '';
+
+            let finalHeader = mainHeader;
+            if (subHeader && subHeader.toLowerCase() !== mainHeader.toLowerCase()) {
+              finalHeader = `${mainHeader} (${subHeader})`;
+            }
+            
+            flattenedHeaders.push(finalHeader);
+          });
+
+          // --- End of Smart Parser ---
+
+          // --- Convert data rows to objects using new headers ---
+          const parsedData = dataRows.map(row => {
+            const rowObject = {};
+            flattenedHeaders.forEach((header, index) => {
+              let value = row[index];
+              
+              if (value === undefined || value === null) {
+                rowObject[header] = null;
+              } else if (typeof value === 'number') {
+                rowObject[header] = value;
+              } else if (typeof value === 'string') {
+                let trimmedValue = value.trim();
+                if (trimmedValue === '') {
+                  rowObject[header] = null;
+                } else if (!isNaN(Number(trimmedValue))) {
+                  rowObject[header] = Number(trimmedValue);
+                } else {
+                  rowObject[header] = value;
+                }
+              } else {
+                rowObject[header] = value;
+              }
+            });
+            return rowObject;
+          });
+          // --- End of data conversion ---
+
+          // 3. Save experiment data to Firestore
+          const docRef = await addDoc(collection(db, 'experiments'), {
+            userId: user.uid,
+            authorName: user.displayName || user.email,
+            title: title.trim(),
+            description: description.trim(),
+            isPublic: isPublic,
+            fileURL: fileURL,
+            headers: flattenedHeaders, // <-- Save the new flattened headers
+            data: parsedData,
+            createdAt: Timestamp.now(),
+            analysis: {
+              calculations: [],
+              models: [] 
+            }
+          });
+          
+          setIsLoading(false);
+          navigate(`/dashboard?uploadSuccess=true`);
+        } catch (parseError) {
+          console.error("Error parsing file:", parseError);
+          setError(`Error processing file: ${parseError.message}`);
+          setIsLoading(false);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+
+    } catch (uploadError) {
+      console.error("Error uploading file:", uploadError);
+      setError(`Failed to upload file: ${uploadError.message}`);
+      setIsLoading(false);
+    }
   };
-  
-  // --- NEW HANDLER FOR OCR ---
-  const handleOcrComplete = ({ data, columns, imageFile }) => {
-    setFile(imageFile); // Save image file for later upload
-    setOcrData({ data, columns });
-    setUploadOptions(prev => ({ ...prev, dataMethod: 'manual' }));
-    // Step is already 1, so ManualDataEntry will render with this new data
-  };
-
-  const handleManualDataSubmitted = ({ data, columns }) => {
-    // Convert array of strings to array of objects
-    const jsonData = data.map(row => {
-      let rowObj = {};
-      columns.forEach((col, index) => {
-        const val = row[index] || '';
-        const numVal = parseFloat(val);
-        // Check if val is a number, but not just an empty string
-        rowObj[col.name] = !isNaN(numVal) && val.trim() !== '' ? numVal : val;
-      });
-      return rowObj;
-    });
-
-    setOriginalData(jsonData);
-    setHeaders(columns.map(c => c.name));
-    setOcrData(null); // Clear OCR data
-    setStep(2); // Go to ColumnMapper
-  };
-
-  const handleMapComplete = (mapping) => {
-    setColumnMap(mapping);
-    setStep(3);
-  };
-
-  const handleAnalysisComplete = (selectedCalculations) => {
-    const calcIds = selectedCalculations.map(c => c.id);
-    const { newData, newHeaders } = runAnalysis(originalData, columnMap, selectedCalculations);
-    
-    setProcessedData({
-      data: newData,
-      analysis: {
-        selectedIds: calcIds, 
-        newHeaders,
-        originalHeaders: headers,
-        map: columnMap,
-        calculations: selectedCalculations.map(({id, name, formula}) => ({id, name, formula}))
-      }
-    });
-    setStep(4);
-  };
-  
-  const handleSave = (details) => {
-    mutate(details);
-  };
-  
-  const resetFlow = () => {
-    setStep(0); // Go back to chooser
-    setFile(null);
-    setOriginalData([]);
-    setHeaders([]);
-    setColumnMap({});
-    setProcessedData(null);
-    setOcrData(null); // <-- Clear OCR data
-  }
 
   return (
-    <div className="container mx-auto max-w-3xl">
-      <h1 className="mb-6 text-3xl font-bold text-gray-900">
-        Create New Experiment
-      </h1>
+    <div className="container mx-auto max-w-2xl px-4 py-8">
+      <div className="rounded-lg bg-white p-8 shadow-md">
+        <h1 className="mb-6 text-3xl font-bold text-gray-800">Upload New Experiment Data</h1>
 
-      <div className="relative rounded-lg">
-        {/* Render current step */}
-        {step === 0 && (
-          <UploadMethodSelector onSelect={handleOptionsSelected} />
-        )}
-        
-        {step === 1 && uploadOptions.dataMethod === 'file' && (
-          <FileDropzone onFileAccepted={handleFileAccepted} />
-        )}
-        
-        {step === 1 && uploadOptions.dataMethod === 'manual' && (
-          <ManualDataEntry 
-            onSubmit={handleManualDataSubmitted}
-            // Pass OCR data if it exists
-            initialColumns={ocrData?.columns}
-            initialData={ocrData?.data}
-          />
-        )}
-
-        {/* --- NEW STEP FOR OCR --- */}
-        {step === 1 && uploadOptions.dataMethod === 'ocr' && (
-          <OcrDropzone onOcrComplete={handleOcrComplete} />
-        )}
-
-        {step === 2 && (
-          <ColumnMapper
-            detectedHeaders={headers}
-            availableCalculations={AVAILABLE_CALCULATIONS} 
-            onMapComplete={handleMapComplete}
-          />
-        )}
-        {step === 3 && (
-          <AnalysisSelector
-            columnMap={columnMap}
-            availableCalculations={AVAILABLE_CALCULATIONS}
-            allowCustomFormulas={uploadOptions.formulaMethod === 'custom'}
-            onAnalysisComplete={handleAnalysisComplete}
-          />
-        )}
-        {step === 4 && (
-          <FinalizeExperiment onSave={handleSave} onCancel={resetFlow} />
-        )}
-
-        {isLoading && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-white/70">
-            <Spinner />
-            <p className="mt-2 text-lg font-semibold text-primary-dark">
-              Saving Experiment...
-            </p>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+              Experiment Title
+            </label>
+            <input
+              type="text"
+              id="title"
+              className="mt-1 block w-full rounded-md border-secondary-DEFAULT shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g., JSL SAF01 Data (Apr-22 to Feb-23)"
+              required
+            />
           </div>
-        )}
+
+          <div>
+            <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+              Description (Optional)
+            </label>
+            <textarea
+              id="description"
+              rows="3"
+              className="mt-1 block w-full rounded-md border-secondary-DEFAULT shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Provide a brief description of your experiment, methods, or objectives."
+            ></textarea>
+          </div>
+
+          <div>
+            <label htmlFor="file-upload" className="block text-sm font-medium text-gray-700">
+              Upload .xlsx File
+            </label>
+            <div className="mt-1 flex justify-center rounded-md border-2 border-dashed border-secondary-DEFAULT px-6 pt-5 pb-6">
+              <div className="space-y-1 text-center">
+                <FaFileExcel className="mx-auto h-12 w-12 text-gray-400" />
+                <div className="flex text-sm text-gray-600">
+                  <label
+                    htmlFor="file-upload"
+                    className="relative cursor-pointer rounded-md bg-white font-medium text-primary hover:text-primary-dark focus-within:outline-none focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2"
+                  >
+                    <span>Upload a file</span>
+                    <input
+                      id="file-upload"
+                      name="file-upload"
+                      type="file"
+                      className="sr-only"
+                      onChange={handleFileChange}
+                      accept=".xlsx,.csv"
+                    />
+                  </label>
+                  <p className="pl-1">or drag and drop</p>
+                </div>
+                <p className="text-xs text-gray-500">.xlsx or .csv files are supported</p>
+                {file && (
+                  <p className="mt-2 text-sm text-gray-700">Selected file: <span className="font-medium">{file.name}</span></p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center">
+            <input
+              id="isPublic"
+              name="isPublic"
+              type="checkbox"
+              checked={isPublic}
+              onChange={(e) => setIsPublic(e.target.checked)}
+              className="h-4 w-4 rounded border-secondary-DEFAULT text-primary focus:ring-primary"
+            />
+            <label htmlFor="isPublic" className="ml-2 block text-sm text-gray-900">
+              Make this experiment public
+            </label>
+            <span className="ml-2 text-sm text-gray-500">
+              <FaInfoCircle className="inline-block mr-1" /> Public experiments can be viewed by anyone.
+            </span>
+          </div>
+
+          {error && <p className="text-sm font-medium text-red-600">{error}</p>}
+
+          <Button type="submit" className="w-full" disabled={isLoading || !file || !title.trim()}>
+            {isLoading ? (
+              <>
+                <Spinner className="mr-2" /> Uploading & Processing...
+              </>
+            ) : (
+              <>
+                <FaUpload className="mr-2" /> Upload Data
+              </>
+            )}
+          </Button>
+        </form>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, Fragment } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuthStore } from '../hooks/useAuthStore';
@@ -8,6 +8,9 @@ import { FaChevronDown } from 'react-icons/fa';
 import { Listbox, RadioGroup } from '@headlessui/react';
 import Button from '../components/common/Button';
 import HeatmapChart from '../components/visualization/HeatmapChart';
+import VariableSelector from '../components/upload/VariableSelector';
+import ModelResultDisplay from '../components/visualization/ModelResultDisplay';
+import Spinner from '../components/common/Spinner';
 
 // Reusable Select component
 const Select = ({ label, value, onChange, options, valueKey = "id" }) => (
@@ -45,17 +48,58 @@ const Select = ({ label, value, onChange, options, valueKey = "id" }) => (
   </Listbox>
 );
 
+// --- THIS IS YOUR SIMULATED BACKEND ---
+const runMultiVariableModel = async (experimentData, independentVars, dependentVars) => {
+  console.log("Calling backend with:", { 
+    data: experimentData, 
+    independent: independentVars, 
+    dependent: dependentVars 
+  });
+  
+  await new Promise(res => setTimeout(res, 2000));
+  
+  // --- MOCK BACKEND RESPONSE ---
+  const coefficients = {};
+  dependentVars.forEach(depVar => {
+    coefficients[depVar] = {};
+    independentVars.forEach(indepVar => {
+      coefficients[depVar][indepVar] = Math.random() * 5 - 2.5; 
+    });
+    coefficients[depVar]['Intercept'] = Math.random() * 10;
+  });
+
+  const predictions = experimentData.map(row => {
+    const actual = {};
+    const predicted = {};
+    
+    dependentVars.forEach(depVar => {
+      actual[depVar] = row[depVar];
+      predicted[depVar] = row[depVar] * (0.8 + Math.random() * 0.4); 
+    });
+    
+    return { actual, predicted };
+  });
+
+  return {
+    r_squared: 0.75 + Math.random() * 0.2,
+    coefficients: coefficients,
+    predictions: predictions,
+  };
+};
+// --- END OF SIMULATED BACKEND ---
+
+
 export default function SelectModulePage() {
   const { user } = useAuthStore();
-  const [step, setStep] = useState(0); // 0: Select Experiment, 1: Select Model, 2: Configure Vars, 3: View
+  const [step, setStep] = useState(0); 
   
-  // State for selections
   const [selectedExperiment, setSelectedExperiment] = useState(null);
   const [selectedModel, setSelectedModel] = useState(null);
   const [heatmapVars, setHeatmapVars] = useState({ x: '', y: '', z: '' });
+  const [modelVars, setModelVars] = useState({ independentVars: [], dependentVars: [] });
+  const [modelResults, setModelResults] = useState(null);
 
-  // 1. Fetch user's experiments
-  const { data: experiments, isLoading } = useQuery({
+  const { data: experiments, isLoading: isLoadingExperiments } = useQuery({
     queryKey: ['myExperiments', user?.uid],
     queryFn: async () => {
       const q = query(collection(db, 'experiments'), where('userId', '==', user.uid));
@@ -65,24 +109,52 @@ export default function SelectModulePage() {
     enabled: !!user,
   });
 
-  // Memoize headers of selected experiment
+  const { mutate: runModel, isLoading: isModelRunning } = useMutation({
+    mutationFn: (variables) => 
+      runMultiVariableModel(variables.data, variables.independent, variables.dependent),
+    onSuccess: (results) => {
+      setModelResults(results);
+      setStep(3);
+    },
+    onError: (err) => {
+      alert(`Model simulation failed: ${err.message}`);
+    }
+  });
+
+  // This logic now works because the headers are correctly flattened on upload
   const numericHeaders = useMemo(() => {
     if (!selectedExperiment?.data || selectedExperiment.data.length === 0) return [];
     const firstRow = selectedExperiment.data[0];
-    // Get headers for columns that contain numeric data
     return selectedExperiment.headers
       .filter(h => typeof firstRow[h] === 'number')
-      .map(h => ({ id: h, name: h })); // Format for Select component
+      .map(h => ({ id: h, name: h }));
   }, [selectedExperiment]);
 
   const analysisModels = [
     { id: 'heatmap', name: 'Heatmap Generator' },
-    { id: 'multimodel', name: 'Multi-Variable Model (Coming Soon)', disabled: true },
+    { id: 'multimodel', name: 'Multi-Variable Model', disabled: false },
   ];
 
-  // --- Workflow Handlers ---
   const handleProceed = () => {
     setStep(prev => prev + 1);
+  };
+  
+  const handleModelSelect = () => {
+    if (selectedModel?.id === 'heatmap') setStep(2);
+    else if (selectedModel?.id === 'multimodel') setStep(2);
+  };
+  
+  const handleHeatmapProceed = () => {
+    setStep(3);
+  };
+  
+  const handleVariableSelectProceed = (variables) => {
+    setModelVars(variables);
+    runModel({
+      data: selectedExperiment.data,
+      independent: variables.independentVars,
+      dependent: variables.dependentVars
+    });
   };
   
   const resetFlow = () => {
@@ -90,9 +162,21 @@ export default function SelectModulePage() {
     setSelectedExperiment(null);
     setSelectedModel(null);
     setHeatmapVars({ x: '', y: '', z: '' });
+    setModelVars({ independentVars: [], dependentVars: [] });
+    setModelResults(null);
   };
 
-  if (isLoading) return <PageLoader />;
+  if (isLoadingExperiments) return <PageLoader />;
+  if (isModelRunning) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-[60vh]">
+        <PageLoader />
+        <p className="mt-4 text-lg font-semibold text-primary-dark">
+          Calling backend & performing calculations...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto max-w-4xl space-y-6">
@@ -103,7 +187,6 @@ export default function SelectModulePage() {
         )}
       </div>
 
-      {/* --- Step 0: Select Experiment --- */}
       {step === 0 && (
         <div className="rounded-lg bg-white p-6 shadow-sm space-y-4">
           <h2 className="text-xl font-semibold">1. Select an Experiment to Analyze</h2>
@@ -119,7 +202,6 @@ export default function SelectModulePage() {
         </div>
       )}
 
-      {/* --- Step 1: Select Model (as per sketch) --- */}
       {step === 1 && (
         <div className="rounded-lg bg-white p-6 shadow-sm space-y-4">
           <h2 className="text-xl font-semibold">2. Which model do you want to select?</h2>
@@ -141,13 +223,12 @@ export default function SelectModulePage() {
               ))}
             </div>
           </RadioGroup>
-          <Button onClick={handleProceed} disabled={!selectedModel}>
+          <Button onClick={handleModelSelect} disabled={!selectedModel}>
             Next
           </Button>
         </div>
       )}
 
-      {/* --- Step 2: Configure Heatmap (as per sketch) --- */}
       {step === 2 && selectedModel?.id === 'heatmap' && (
         <div className="rounded-lg bg-white p-6 shadow-sm space-y-4">
           <h2 className="text-xl font-semibold">3. Select Heatmap Variables</h2>
@@ -181,13 +262,19 @@ export default function SelectModulePage() {
             Y = <span className="font-medium text-gray-900">{heatmapVars.y || '...'}</span>, 
             Z = <span className="font-medium text-gray-900">{heatmapVars.z || '...'}</span>
           </p>
-          <Button onClick={handleProceed} disabled={!heatmapVars.x || !heatmapVars.y || !heatmapVars.z}>
+          <Button onClick={handleHeatmapProceed} disabled={!heatmapVars.x || !heatmapVars.y || !heatmapVars.z}>
             Do you want to proceed?
           </Button>
         </div>
       )}
       
-      {/* --- Step 3: Show Result (as per sketch) --- */}
+      {step === 2 && selectedModel?.id === 'multimodel' && (
+        <VariableSelector 
+          experiment={selectedExperiment}
+          onProceed={handleVariableSelectProceed}
+        />
+      )}
+      
       {step === 3 && selectedModel?.id === 'heatmap' && (
         <div className="rounded-lg bg-white p-6 shadow-sm">
           <h2 className="text-2xl font-semibold">Heatmap Result</h2>
@@ -201,6 +288,14 @@ export default function SelectModulePage() {
             />
           </div>
         </div>
+      )}
+      
+      {step === 3 && selectedModel?.id === 'multimodel' && modelResults && (
+        <ModelResultDisplay
+          results={modelResults}
+          independentVars={modelVars.independentVars}
+          dependentVars={modelVars.dependentVars}
+        />
       )}
     </div>
   );

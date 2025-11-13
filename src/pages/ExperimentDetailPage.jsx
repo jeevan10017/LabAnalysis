@@ -8,11 +8,11 @@ import { DataGrid } from '../components/visualization/DataGrid';
 import Button from '../components/common/Button';
 import { DynamicChart } from '../components/visualization/DynamicChart';
 import { Listbox } from '@headlessui/react';
-import { FaChevronDown, FaPrint, FaDownload, FaInfoCircle } from 'react-icons/fa';
+import { FaChevronDown, FaPrint, FaDownload, FaInfoCircle, FaFileExcel } from 'react-icons/fa'; // NEW ICON
 import { utils, writeFile } from 'xlsx';
 import PrintModal from '../components/common/PrintModal'; 
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable'; // <-- CORRECT IMPORT
+import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import Switch from '../components/common/Switch';
 import PageLoader from '../components/common/PageLoader';
@@ -113,11 +113,20 @@ export default function ExperimentDetailPage() {
     }
   }, [numericHeaders]);
 
-  const handleDownload = () => {
+  const handleDownloadXLSX = () => {
+    // Open the original uploaded file URL in a new tab for download
+    if (experiment?.fileURL) {
+      window.open(experiment.fileURL, '_blank');
+    } else {
+      alert('Original XLSX file not found for download.');
+    }
+  };
+
+  const handleDownloadCSV = () => {
     const ws = utils.json_to_sheet(experiment.data);
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, 'Data');
-    writeFile(wb, `${experiment.title || 'experiment'}.xlsx`);
+    writeFile(wb, `${experiment.title || 'experiment'}.csv`);
   };
 
   // --- PROFESSIONAL PDF REPORT GENERATION (FIXED) ---
@@ -317,9 +326,14 @@ export default function ExperimentDetailPage() {
               {isUpdating && <Spinner />}
             </div>
           </div>
-          <div className="mt-4 flex space-x-3 sm:mt-0">
-            <Button variant="secondary" onClick={handleDownload}>
-              <FaDownload className="mr-2" /> Extract (.xlsx)
+          <div className="mt-4 flex flex-wrap gap-3 sm:mt-0"> {/* Use flex-wrap and gap */}
+            {experiment?.fileURL && (
+                <Button variant="secondary" onClick={handleDownloadXLSX}>
+                    <FaFileExcel className="mr-2" /> Original .xlsx
+                </Button>
+            )}
+            <Button variant="secondary" onClick={handleDownloadCSV}>
+              <FaDownload className="mr-2" /> Extract (.csv)
             </Button>
             <Button onClick={() => setIsPrintModalOpen(true)}>
               <FaPrint className="mr-2" /> Generate Report
