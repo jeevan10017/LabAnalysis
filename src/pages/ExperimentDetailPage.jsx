@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, Fragment } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { doc, getDoc } from 'firebase/firestore';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import Spinner from '../components/common/Spinner';
 import { DataGrid } from '../components/visualization/DataGrid';
@@ -12,21 +12,23 @@ import { FaChevronDown, FaPrint, FaDownload, FaInfoCircle } from 'react-icons/fa
 import { utils, writeFile } from 'xlsx';
 import PrintModal from '../components/common/PrintModal'; 
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable'; // ← FIXED: Named import instead of side-effect import
+import autoTable from 'jspdf-autotable'; // <-- CORRECT IMPORT
 import html2canvas from 'html2canvas';
+import Switch from '../components/common/Switch';
+import PageLoader from '../components/common/PageLoader';
 
 // Select component with new theme
 const Select = ({ label, value, onChange, options }) => (
   <Listbox value={value} onChange={onChange}>
     <div className="relative">
       <Listbox.Label className="block text-sm font-medium text-gray-700">{label}</Listbox.Label>
-      <Listbox.Button className="relative mt-1 w-full cursor-default  border border-secondary-DEFAULT bg-white py-2 pl-3 pr-10 text-left shadow-sm focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm">
+      <Listbox.Button className="relative mt-1 w-full cursor-default rounded-md border border-secondary-DEFAULT bg-white py-2 pl-3 pr-10 text-left shadow-sm focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm">
         <span className="block truncate">{value || 'Select an option'}</span>
         <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
           <FaChevronDown className="h-5 w-5 text-gray-400" />
         </span>
       </Listbox.Button>
-      <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto  bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
+      <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
         {options.map(option => (
           <Listbox.Option
             key={option}
@@ -66,13 +68,29 @@ export default function ExperimentDetailPage() {
   
   const graphRef = useRef();
   const theoryRef = useRef();
-  // tableRef is no longer needed as we use the data directly
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: experiment, isLoading, error } = useQuery({
     queryKey: ['experiment', id],
     queryFn: () => getExperiment(id),
     enabled: !!id,
+  });
+
+  const { mutate: updateVisibility, isLoading: isUpdating } = useMutation({
+    mutationFn: async (newStatus) => {
+      const docRef = doc(db, 'experiments', id);
+      await updateDoc(docRef, { isPublic: newStatus });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['experiment', id] });
+      queryClient.invalidateQueries({ queryKey: ['myExperiments'] });
+      queryClient.invalidateQueries({ queryKey: ['publicExperiments'] });
+    },
+    onError: (err) => {
+      console.error(err);
+      alert("Failed to update status. Please try again.");
+    }
   });
 
   const [xAxisKey, setXAxisKey] = useState('');
@@ -102,7 +120,7 @@ export default function ExperimentDetailPage() {
     writeFile(wb, `${experiment.title || 'experiment'}.xlsx`);
   };
 
- // --- PROFESSIONAL PDF REPORT GENERATION ---
+  // --- PROFESSIONAL PDF REPORT GENERATION (FIXED) ---
   const handleGeneratePdf = async ({ includeGraph, includeTable, includeTheory }) => {
     const doc = new jsPDF('p', 'mm', 'a4');
     let yOffset = 20;
@@ -110,152 +128,109 @@ export default function ExperimentDetailPage() {
     const pdfWidth = doc.internal.pageSize.getWidth() - (margin * 2);
     const pageHeight = doc.internal.pageSize.getHeight();
 
+    // Helper function to add text and manage page breaks
+    const addText = (text, size, isBold, color = [0, 0, 0]) => {
+      if (yOffset > pageHeight - margin) { doc.addPage(); yOffset = margin; }
+      doc.setFontSize(size);
+      doc.setFont(undefined, isBold ? 'bold' : 'normal');
+      doc.setTextColor(color[0], color[1], color[2]);
+      const lines = doc.splitTextToSize(text, pdfWidth);
+      doc.text(lines, margin, yOffset);
+      yOffset += (lines.length * (size * 0.4)) + 5;
+    };
+    
+    // Helper function to add canvas elements
+    const addElement = async (element) => {
+      if (element) {
+        const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+        const imgData = canvas.toDataURL('image/png');
+        const imgProps = doc.getImageProperties(imgData);
+        
+        const maxGraphHeight = 120;
+        let graphWidth = pdfWidth;
+        let graphHeight = (imgProps.height * graphWidth) / imgProps.width;
+        
+        if (graphHeight > maxGraphHeight) {
+          graphHeight = maxGraphHeight;
+          graphWidth = (imgProps.width * graphHeight) / imgProps.height;
+        }
+        
+        if (yOffset + graphHeight > pageHeight - margin) {
+          doc.addPage();
+          yOffset = margin;
+        }
+        
+        const xOffset = margin + (pdfWidth - graphWidth) / 2;
+        doc.addImage(imgData, 'PNG', xOffset, yOffset, graphWidth, graphHeight);
+        yOffset += graphHeight + 15;
+      }
+    };
+
     // --- COVER PAGE ---
-    // Title
-    doc.setFontSize(24);
-    doc.setFont(undefined, 'bold');
-    doc.setTextColor(0, 121, 107); // Primary color
-    const titleLines = doc.splitTextToSize(experiment.title, pdfWidth);
-    doc.text(titleLines, margin, yOffset);
-    yOffset += (titleLines.length * 10) + 15;
-    
-    // Experiment Report Label
-    doc.setFontSize(14);
-    doc.setTextColor(100, 100, 100);
-    doc.setFont(undefined, 'italic');
-    doc.text('Laboratory Experiment Report', margin, yOffset);
-    yOffset += 20;
-    
-    // Divider line
+    addText(experiment.title, 24, true, [0, 121, 107]);
+    yOffset += 5;
+    addText('Laboratory Experiment Report', 14, false, [100, 100, 100]);
+    yOffset += 10;
     doc.setDrawColor(0, 121, 107);
     doc.setLineWidth(0.5);
     doc.line(margin, yOffset, pdfWidth + margin, yOffset);
     yOffset += 15;
     
-    // Author & Metadata Section
     doc.setFontSize(12);
     doc.setTextColor(60, 60, 60);
     doc.setFont(undefined, 'bold');
     doc.text('Author:', margin, yOffset);
     doc.setFont(undefined, 'normal');
-    doc.text(experiment.authorName || 'N/A', margin + 25, yOffset);
+    doc.text(experiment.authorName || 'N/A', margin + 35, yOffset);
     yOffset += 8;
     
     doc.setFont(undefined, 'bold');
     doc.text('Date:', margin, yOffset);
     doc.setFont(undefined, 'normal');
-    doc.text(new Date(experiment.createdAt?.toDate()).toLocaleDateString(), margin + 25, yOffset);
+    doc.text(new Date(experiment.createdAt?.toDate()).toLocaleDateString(), margin + 35, yOffset);
     yOffset += 8;
-    
-    doc.setFont(undefined, 'bold');
-    doc.text('Experiment ID:', margin, yOffset);
-    doc.setFont(undefined, 'normal');
-    doc.text(id || 'N/A', margin + 35, yOffset);
-    yOffset += 15;
-    
-    // Description Section
+
     if (experiment.description) {
+      yOffset += 10;
       doc.setFont(undefined, 'bold');
       doc.text('Description:', margin, yOffset);
       yOffset += 7;
-      
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
-      doc.setTextColor(80, 80, 80);
-      const descLines = doc.splitTextToSize(experiment.description, pdfWidth);
-      doc.text(descLines, margin, yOffset);
-      yOffset += (descLines.length * 5) + 10;
+      addText(experiment.description, 10, false, [80, 80, 80]);
     }
     
-    // --- NEW PAGE FOR CONTENT ---
+    // --- CONTENT PAGE ---
     doc.addPage();
     yOffset = margin;
     
-    // --- DATA VISUALIZATION SECTION ---
     if (includeGraph && graphRef.current) {
-      doc.setFontSize(16);
-      doc.setFont(undefined, 'bold');
-      doc.setTextColor(0, 121, 107);
-      doc.text('Data Visualization', margin, yOffset);
-      yOffset += 10;
-      
-      // Capture graph with better quality
-      const canvas = await html2canvas(graphRef.current, { 
-        scale: 3, // Higher quality
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const imgProps = doc.getImageProperties(imgData);
-      
-      // Calculate dimensions to fit nicely in the page
-      const maxGraphHeight = 100;
-      let graphWidth = pdfWidth;
-      let graphHeight = (imgProps.height * graphWidth) / imgProps.width;
-      
-      // If too tall, adjust
-      if (graphHeight > maxGraphHeight) {
-        graphHeight = maxGraphHeight;
-        graphWidth = (imgProps.width * graphHeight) / imgProps.height;
-      }
-      
-      // Center the graph
-      const xOffset = margin + (pdfWidth - graphWidth) / 2;
-      
-      doc.addImage(imgData, 'PNG', xOffset, yOffset, graphWidth, graphHeight);
-      yOffset += graphHeight + 15;
+      addText('Data Visualization', 16, true, [0, 121, 107]);
+      await addElement(graphRef.current);
     }
     
-    // --- ANALYSIS & CALCULATIONS SECTION ---
     const calculations = experiment?.analysis?.calculations || [];
     if (includeTheory && calculations.length > 0) {
-      if (yOffset + 30 > pageHeight - margin) { 
-        doc.addPage(); 
-        yOffset = margin; 
-      }
-      
-      doc.setFontSize(16);
-      doc.setFont(undefined, 'bold');
-      doc.setTextColor(0, 121, 107);
-      doc.text('Analysis & Calculations', margin, yOffset);
-      yOffset += 10;
+      if (yOffset + 30 > pageHeight - margin) { doc.addPage(); yOffset = margin; }
+      addText('Analysis & Calculations', 16, true, [0, 121, 107]);
       
       doc.setFontSize(10);
       doc.setTextColor(60, 60, 60);
-      
       calculations.forEach((calc, index) => {
-        if (yOffset > pageHeight - 30) { 
-          doc.addPage(); 
-          yOffset = margin; 
-        }
-        
+        if (yOffset > pageHeight - 30) { doc.addPage(); yOffset = margin; }
         doc.setFont(undefined, 'bold');
         doc.text(`${index + 1}. ${calc.name}`, margin + 5, yOffset);
         yOffset += 6;
-        
         doc.setFont(undefined, 'normal');
-        doc.setTextColor(80, 80, 80);
-        const formulaLines = doc.splitTextToSize(`Formula: ${calc.formula}`, pdfWidth - 10);
-        doc.text(formulaLines, margin + 10, yOffset);
-        yOffset += (formulaLines.length * 5) + 5;
+        addText(`Formula: ${calc.formula}`, 10, false, [80, 80, 80]);
+        yOffset += 5;
       });
       yOffset += 10;
     }
 
-    // --- DATA TABLE SECTION ---
     if (includeTable) {
-      if (yOffset > pageHeight - 60) { 
-        doc.addPage(); 
-        yOffset = margin; 
-      }
+      if (yOffset > pageHeight - 60) { doc.addPage(); yOffset = margin; }
+      addText('Experimental Data', 16, true, [0, 121, 107]);
       
-      doc.setFontSize(16);
-      doc.setFont(undefined, 'bold');
-      doc.setTextColor(0, 121, 107);
-      doc.text('Experimental Data', margin, yOffset);
-      yOffset += 10;
-      
+      // --- PDF TABLE FIX: Use autoTable directly from JSON ---
       autoTable(doc, {
         startY: yOffset,
         head: [experiment.headers],
@@ -267,19 +242,16 @@ export default function ExperimentDetailPage() {
           fontStyle: 'bold',
           halign: 'center'
         },
-        styles: {
-          fontSize: 9,
-          cellPadding: 3,
-        },
-        alternateRowStyles: {
-          fillColor: [245, 245, 245]
-        },
+        styles: { fontSize: 8, cellPadding: 2 },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
         margin: { left: margin, right: margin },
       });
+      // Update yOffset to be after the table
+      yOffset = (doc).lastAutoTable.finalY + 15;
     }
     
-    // --- FOOTER ON ALL PAGES ---
-    const pageCount = doc.internal.getNumberOfPages();
+    // --- FOOTER ---
+    const pageCount = (doc).internal.getNumberOfPages();
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
     for (let i = 1; i <= pageCount; i++) {
@@ -304,9 +276,8 @@ export default function ExperimentDetailPage() {
     const calculations = experiment?.analysis?.calculations || [];
     if (calculations.length === 0) return null;
 
-    // This ref is now only for the on-screen display
     return (
-      <div ref={theoryRef} className="mt-6  bg-primary-light p-4">
+      <div ref={theoryRef} className="mt-6 rounded-lg bg-primary-light p-4">
         <h3 className="flex items-center text-lg font-semibold text-primary-dark">
           <FaInfoCircle className="mr-2" /> Analysis & Calculations
         </h3>
@@ -324,7 +295,7 @@ export default function ExperimentDetailPage() {
     );
   };
 
-  if (isLoading) return <Spinner />;
+  if (isLoading) return <PageLoader />;
   if (error) return <div className="text-red-500">Error: {error.message}</div>;
 
   return (
@@ -334,6 +305,17 @@ export default function ExperimentDetailPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{experiment.title}</h1>
             <p className="mt-1 text-secondary-dark">{experiment.description}</p>
+            <div className="mt-4 flex items-center space-x-3">
+              <Switch
+                enabled={experiment.isPublic}
+                onChange={updateVisibility}
+                srLabel="Toggle experiment visibility"
+              />
+              <span className="text-sm font-medium text-gray-700">
+                {experiment.isPublic ? 'Public' : 'Private'}
+              </span>
+              {isUpdating && <Spinner />}
+            </div>
           </div>
           <div className="mt-4 flex space-x-3 sm:mt-0">
             <Button variant="secondary" onClick={handleDownload}>
@@ -345,7 +327,7 @@ export default function ExperimentDetailPage() {
           </div>
         </div>
         
-        <div className=" bg-white p-6 shadow-sm">
+        <div className="rounded-lg bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold">Data Visualization</h2>
           
           <div className="my-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -363,7 +345,6 @@ export default function ExperimentDetailPage() {
             />
           </div>
           
-          {/* FIX: Use aspect-video for responsiveness */}
           <div ref={graphRef} className="w-full aspect-video">
             <DynamicChart
               data={experiment.data}
@@ -375,9 +356,8 @@ export default function ExperimentDetailPage() {
         
         {experiment?.analysis?.calculations?.length > 0 && <ExplanationBox />}
 
-        <div className="mt-8  bg-white p-6 shadow-sm">
+        <div className="mt-8 rounded-lg bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold">Full Data Table</h2>
-          {/* This ref is now only for the on-screen display */}
           <div className="mt-4 overflow-x-auto">
             <DataGrid
               data={experiment.data}

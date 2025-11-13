@@ -7,7 +7,7 @@ const variants = {
     'bg-secondary-DEFAULT text-primary-dark hover:bg-gray-300 focus-visible:ring-primary-dark',
   ghost:
     'bg-transparent text-secondary-darkest hover:bg-secondary-DEFAULT focus-visible:ring-gray-400',
-  icon: 'p-2 text-secondary-darkest hover:bg-secondary-DEFAULT ull focus-visible:ring-gray-300',
+  icon: 'p-2 text-secondary-darkest hover:bg-secondary-DEFAULT  focus-visible:ring-gray-300',
 };
 
 export default function Button({

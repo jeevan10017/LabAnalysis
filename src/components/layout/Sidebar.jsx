@@ -8,6 +8,7 @@ import {
   FaUpload,
   FaAngleLeft,
   FaAngleRight,
+  FaCogs, // --- NEW ICON ---
 } from 'react-icons/fa';
 
 const NavItem = ({ to, icon, isCollapsed, children, onClick }) => (
@@ -16,7 +17,7 @@ const NavItem = ({ to, icon, isCollapsed, children, onClick }) => (
     end
     onClick={onClick}
     className={({ isActive }) => `
-      flex items-center h-12  mx-2 px-4 
+      flex items-center h-12 mx-2 px-4 rounded-lg
       transition-all duration-200 ease-in-out
       ${isCollapsed ? 'justify-center' : 'justify-start'}
       ${
@@ -51,7 +52,7 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
       className={`
         fixed inset-y-0 left-0 z-40
         flex flex-col
-        bg-white 
+        bg-white shadow-lg
         transition-all duration-300 ease-in-out
         ${isCollapsed ? 'w-20' : 'w-64'}
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -73,7 +74,7 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
             transition-all duration-300
             ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}
           `}>
-            Lab<span className="text-primary">Analysis</span>
+            Data<span className="text-primary">Analysis</span>
           </span>
         </Link>
       </div>
@@ -112,6 +113,15 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
         >
           Extract
         </NavItem>
+        {/* --- NEW LINK --- */}
+        <NavItem 
+          to="/module" 
+          icon={<FaCogs size={20} />} 
+          isCollapsed={isCollapsed} 
+          onClick={closeSidebar}
+        >
+          Analysis Modules
+        </NavItem>
       </nav>
 
       {/* Collapse Toggle - Always Visible on Desktop */}
@@ -127,7 +137,6 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           <div className="flex items-center space-x-3">
-            {/* Icon - Always visible */}
             <div className="flex-shrink-0">
               {isCollapsed ? (
                 <FaAngleRight size={20} className="transition-transform duration-200" />
@@ -135,7 +144,6 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
                 <FaAngleLeft size={20} className="transition-transform duration-200" />
               )}
             </div>
-            {/* Text - Fades out when collapsed */}
             <span className={`
               font-medium whitespace-nowrap text-sm
               transition-all duration-300

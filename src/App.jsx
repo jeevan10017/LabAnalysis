@@ -8,7 +8,10 @@ import ExperimentDetailPage from './pages/ExperimentDetailPage';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { useAuthStore } from './hooks/useAuthStore';
-import Spinner from './components/common/Spinner';
+import PageLoader from './components/common/PageLoader'; // Use PageLoader
+import React from 'react';
+// --- NEW ---
+import SelectModulePage from './pages/SelectModulePage';
 
 function App() {
   const { loading } = useAuthStore();
@@ -16,7 +19,7 @@ function App() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-100">
-        <Spinner />
+        <PageLoader />
       </div>
     );
   }
@@ -50,6 +53,14 @@ function App() {
           element={
             <ProtectedRoute>
               <ExperimentDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/module"
+          element={
+            <ProtectedRoute>
+              <SelectModulePage />
             </ProtectedRoute>
           }
         />
