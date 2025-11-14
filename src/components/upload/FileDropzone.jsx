@@ -20,7 +20,7 @@ export default function FileDropzone({ onFileAccepted }) {
   });
 
   return (
-    <div className="w-full bg-white p-6 shadow">
+    <div className="w-full bg-white p-6 shadow rounded-lg">
       <h3 className="text-lg font-semibold text-gray-800 mb-4">
         Upload Your Data File
       </h3>

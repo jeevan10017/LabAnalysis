@@ -28,9 +28,14 @@ export default function HeatmapChart({ data, xVar, yVar, zVar }) {
           x: xVals,
           y: yVals,
           z: zVals,
-          type: 'heatmap',
-          colorscale: 'Viridis', // A common scientific color scale
+         type: 'contour', 
+          contours_coloring: 'heatmap', 
+          connectgaps: true, 
+          colorscale: 'Viridis',
           showscale: true,
+          line: {
+            width: 0, 
+          },
         },
       ]}
       layout={{
