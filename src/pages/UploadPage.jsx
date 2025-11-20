@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { useMutation } from '@tanstack/react-query';
@@ -19,17 +19,15 @@ import ManualDataEntry from '../components/upload/ManualDataEntry';
 import ColumnMapper from '../components/upload/ColumnMapper';
 import AnalysisSelector from '../components/upload/AnalysisSelector';
 import OcrDropzone from '../components/upload/OcrDropzone';
-import PageLoader from '../components/common/PageLoader';
+import PageLoader from '../components/common/PageLoader'; 
 
-// --- Helper Components ---
-
-// Step 0: Method Selection
+// ... (Helper Components: UploadMethodSelector, FinalizeExperiment remain the same) ...
 const UploadMethodSelector = ({ onSelect }) => {
   const [dataMethod, setDataMethod] = useState('file');
   const [formulaMethod, setFormulaMethod] = useState('inbuilt');
 
   return (
-    <div className="w-full space-y-6  bg-white p-6 shadow">
+    <div className="w-full space-y-6  bg-white p-6">
       {/* Data Input Method */}
       <div>
         <h3 className="text-lg font-semibold text-gray-800">
@@ -87,6 +85,7 @@ const UploadMethodSelector = ({ onSelect }) => {
               </div>
               <p className="text-sm text-secondary-dark mt-1">Scan from an image</p>
             </RadioGroup.Option>
+
           </div>
         </RadioGroup>
       </div>
@@ -170,7 +169,7 @@ const FinalizeExperiment = ({ onSave, onCancel }) => {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
-          className="mt-1 block w-full  border-secondary-DEFAULT shadow-sm focus:border-primary focus:ring-primary"
+          className="mt-1 block w-full rounded-md border-secondary-DEFAULT shadow-sm focus:border-primary focus:ring-primary"
         />
       </div>
       <div>
@@ -180,7 +179,7 @@ const FinalizeExperiment = ({ onSave, onCancel }) => {
           rows={3}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="mt-1 block w-full  border-secondary-DEFAULT shadow-sm focus:border-primary focus:ring-primary"
+          className="mt-1 block w-full rounded-md border-secondary-DEFAULT shadow-sm focus:border-primary focus:ring-primary"
         />
       </div>
       <div className="flex items-start">
@@ -204,27 +203,32 @@ const FinalizeExperiment = ({ onSave, onCancel }) => {
   )
 }
 
+
 // --- Main Page Component ---
 
-export default function UploadPage() {
-  const [step, setStep] = useState(0); 
+export default function UploadPage({ onSuccessOverride, isModalMode = false }) {
+  // If isModalMode, start at step 1 (File Upload) directly
+  const [step, setStep] = useState(isModalMode ? 1 : 0);
+  
   const [uploadOptions, setUploadOptions] = useState({
     dataMethod: 'file',
     formulaMethod: 'inbuilt',
   });
-  const [file, setFile] = useState(null);
+  const [file, setFile] = useState(null); 
   const [originalData, setOriginalData] = useState([]);
   const [headers, setHeaders] = useState([]);
   const [columnMap, setColumnMap] = useState({});
   const [processedData, setProcessedData] = useState(null);
-  const [ocrData, setOcrData] = useState(null);
-  const [error, setError] = useState(null);
+  const [ocrData, setOcrData] = useState(null); 
+  const [error, setError] = useState(null); 
   const { user } = useAuthStore();
   const navigate = useNavigate();
 
   const { mutate, isLoading } = useMutation({
     mutationFn: async ({ title, description, isPublic }) => {
-      if (!processedData || !user) throw new Error('Missing data or user');
+      if (!user) throw new Error('Missing user');
+      // Allow missing processedData if in simplified mode (just raw data)
+      if (!processedData && !originalData.length) throw new Error('Missing data');
 
       let storagePath = null;
       let fileURL = null;
@@ -234,10 +238,15 @@ export default function UploadPage() {
         storagePath = `${fileType}/${user.uid}/${uuidv4()}-${file.name}`;
         const storageRef = ref(storage, storagePath);
         const uploadResult = await uploadBytes(storageRef, file);
-        fileURL = await getDownloadURL(uploadResult.ref); // Get URL for download later
+        fileURL = await getDownloadURL(uploadResult.ref); 
       }
 
       const authorName = user.displayName || user.email;
+      
+      // Use processed data if available, otherwise fall back to raw data
+      const finalData = processedData ? processedData.data : originalData;
+      const finalHeaders = headers; // headers are set during file parse
+      const finalAnalysis = processedData ? processedData.analysis : { calculations: [] };
 
       const docRef = await addDoc(collection(db, 'experiments'), {
         userId: user.uid,
@@ -247,17 +256,21 @@ export default function UploadPage() {
         description,
         isPublic,
         storagePath,
-        fileURL, // Save the download URL
+        fileURL,
         createdAt: serverTimestamp(),
-        headers: headers, 
-        data: processedData.data, 
-        analysis: processedData.analysis,
+        headers: finalHeaders, 
+        data: finalData, 
+        analysis: finalAnalysis,
       });
 
       return docRef.id;
     },
     onSuccess: (docId) => {
-      navigate(`/dashboard?uploadSuccess=true`);
+      if (onSuccessOverride) {
+          onSuccessOverride(docId); 
+      } else {
+          navigate(`/dashboard?uploadSuccess=true`); 
+      }
     },
     onError: (error) => {
       console.error('Error saving experiment:', error);
@@ -270,7 +283,6 @@ export default function UploadPage() {
     setStep(1); 
   };
 
-  // --- UNION LOGIC: Smart Parser Integration ---
   const handleFileAccepted = (acceptedFiles) => {
     const file = acceptedFiles[0];
     setFile(file); 
@@ -282,15 +294,12 @@ export default function UploadPage() {
         const workbook = read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        
-        // Use 'header: 1' to get an array of arrays
         const jsonData = utils.sheet_to_json(worksheet, { header: 1, defval: null });
         
         if (jsonData.length < 3) {
           throw new Error("File must contain at least 2 header rows and 1 data row.");
         }
 
-        // --- Smart Parser Logic Starts ---
         const headerRow = jsonData[0];
         const unitRow = jsonData[1];
         const dataRows = jsonData.slice(2);
@@ -302,28 +311,20 @@ export default function UploadPage() {
           const mainHeader = (header !== null && !String(header).startsWith('Unnamed')) 
                             ? String(header).trim() 
                             : currentMainHeader;
-          
-          if (mainHeader) {
-              currentMainHeader = mainHeader;
-          }
+          if (mainHeader) currentMainHeader = mainHeader;
           
           const subHeader = unitRow[index] ? String(unitRow[index]).trim() : '';
-
           let finalHeader = mainHeader;
           if (subHeader && subHeader.toLowerCase() !== mainHeader.toLowerCase()) {
             finalHeader = `${mainHeader} (${subHeader})`;
           }
-          // Fallback for completely empty headers
           flattenedHeaders.push(finalHeader || `Column_${index + 1}`);
         });
-        // --- Smart Parser Logic Ends ---
 
-        // --- Data Cleaning Logic Starts ---
         const parsedData = dataRows.map(row => {
           const rowObject = {};
           flattenedHeaders.forEach((header, index) => {
             let value = row[index];
-            
             if (value === undefined || value === null) {
               rowObject[header] = null;
             } else if (typeof value === 'number') {
@@ -343,11 +344,18 @@ export default function UploadPage() {
           });
           return rowObject;
         });
-        // --- Data Cleaning Logic Ends ---
 
         setOriginalData(parsedData);
         setHeaders(flattenedHeaders); 
-        setStep(2); // Go to ColumnMapper
+        
+        // --- MODAL MODE SHORTCUT ---
+        // If in modal mode, skip mapping (step 2) and analysis (step 3)
+        // Jump straight to finalize (step 4)
+        if (isModalMode) {
+            setStep(4);
+        } else {
+            setStep(2); 
+        }
         
       } catch (parseError) {
         console.error("Error parsing file:", parseError);
@@ -358,8 +366,7 @@ export default function UploadPage() {
     reader.readAsArrayBuffer(file); 
   };
   
-  // --- End of Union Logic ---
-
+  // ... (Rest of handlers: handleOcrComplete, handleManualDataSubmitted, etc. remain the same) ...
   const handleOcrComplete = ({ data, columns, imageFile }) => {
     setFile(imageFile); 
     setOcrData({ data, columns });
@@ -410,7 +417,7 @@ export default function UploadPage() {
   };
   
   const resetFlow = () => {
-    setStep(0);
+    setStep(isModalMode ? 1 : 0); // Reset to correct step based on mode
     setFile(null);
     setOriginalData([]);
     setHeaders([]);
@@ -421,28 +428,30 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-3xl">
-      <h1 className="mb-6 text-3xl font-bold text-gray-900">
-        Create New Experiment
-      </h1>
+    // If isModalMode is true, we remove container padding for better fit
+    <div className={isModalMode ? "" : "container mx-auto max-w-3xl"}>
+      {!isModalMode && <h1 className="mb-6 text-3xl font-bold text-gray-900">Create New Experiment</h1>}
       
       {error && (
-        <div className="mb-4  bg-red-50 p-4">
+        <div className="mb-4 rounded-md bg-red-50 p-4">
           <h3 className="text-sm font-medium text-red-800">Error</h3>
           <p className="text-sm text-red-700 mt-2">{error}</p>
         </div>
       )}
 
       <div className="relative ">
-        {step === 0 && (
+        {/* Step 0: Only show if NOT in modal mode */}
+        {step === 0 && !isModalMode && (
           <UploadMethodSelector onSelect={handleOptionsSelected} />
         )}
         
+        {/* File Dropzone (Always available in modal mode at step 1) */}
         {step === 1 && uploadOptions.dataMethod === 'file' && (
           <FileDropzone onFileAccepted={handleFileAccepted} />
         )}
         
-        {step === 1 && uploadOptions.dataMethod === 'manual' && (
+        {/* Other methods are hidden in modal mode by default because we force 'file' */}
+        {step === 1 && uploadOptions.dataMethod === 'manual' && !isModalMode && (
           <ManualDataEntry 
             onSubmit={handleManualDataSubmitted}
             initialColumns={ocrData?.columns}
@@ -450,7 +459,7 @@ export default function UploadPage() {
           />
         )}
 
-        {step === 1 && uploadOptions.dataMethod === 'ocr' && (
+        {step === 1 && uploadOptions.dataMethod === 'ocr' && !isModalMode && (
           <OcrDropzone onOcrComplete={handleOcrComplete} />
         )}
 

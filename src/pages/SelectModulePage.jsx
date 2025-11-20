@@ -3,9 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuthStore } from '../hooks/useAuthStore';
-import { useLocation } from 'react-router-dom'; // Import useLocation
+import { useLocation } from 'react-router-dom'; 
 import PageLoader from '../components/common/PageLoader';
-import { FaChevronDown, FaChartArea, FaBrain, FaEdit } from 'react-icons/fa';
+import { FaChevronDown, FaChartArea, FaBrain, FaEdit, FaPlus } from 'react-icons/fa';
 import { Listbox, Tab } from '@headlessui/react';
 import Button from '../components/common/Button';
 import HeatmapChart from '../components/visualization/HeatmapChart';
@@ -15,13 +15,14 @@ import { Modal } from '../components/common/Modal';
 import ManualDataEntry from '../components/upload/ManualDataEntry';
 import Spinner from '../components/common/Spinner';
 import { useLayoutStore } from '../hooks/useLayoutStore';
+// Import UploadPage to use inside the modal
+import UploadPage from './UploadPage'; 
 
-// Helper for class names
 function classNames(...classes) {
   return classes.filter(Boolean).join(' ')
 }
 
-// Reusable Select
+// ... (Select component remains the same) ...
 const Select = ({ label, value, onChange, options, valueKey = "id" }) => (
   <Listbox value={value} onChange={onChange}>
     <div className="relative">
@@ -57,55 +58,107 @@ const Select = ({ label, value, onChange, options, valueKey = "id" }) => (
   </Listbox>
 );
 
-// --- SIMULATED BACKEND ---
+// ... (HeatmapVariableList remains the same) ...
+const HeatmapVariableList = ({ options, selected, onChange }) => {
+    // ... code from previous response ...
+    const handleToggle = (optionName) => {
+        if (selected.includes(optionName)) {
+          onChange(selected.filter(item => item !== optionName));
+        } else {
+          onChange([...selected, optionName]);
+        }
+      };
+    
+      const handleSelectAll = () => {
+        if (selected.length === options.length) {
+          onChange([]);
+        } else {
+          onChange(options.map(o => o.name));
+        }
+      };
+    
+      return (
+        <div className="bg-white p-4  border border-secondary-DEFAULT shadow-sm h-full flex flex-col">
+          <div className="flex justify-between items-center mb-2 border-b border-secondary-light pb-2">
+            <h3 className="text-sm font-bold text-gray-700">Select Variables</h3>
+            <button 
+              onClick={handleSelectAll}
+              className="text-xs text-primary hover:text-primary-dark underline"
+            >
+              {selected.length === options.length ? 'Deselect All' : 'Select All'}
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto scrollbar-thin space-y-2 pr-2 max-h-[450px]">
+            {options.map((option) => (
+              <div key={option.id} className="flex items-center hover:bg-gray-50 p-1 rounded">
+                <input
+                  id={`hm-${option.id}`}
+                  type="checkbox"
+                  checked={selected.includes(option.name)}
+                  onChange={() => handleToggle(option.name)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                />
+                <label htmlFor={`hm-${option.id}`} className="ml-3 block text-xs text-gray-700 cursor-pointer w-full">
+                  {option.name}
+                </label>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 pt-2 border-t border-secondary-light text-xs text-gray-500">
+            {selected.length} variables selected
+          </div>
+        </div>
+      );
+};
+
+// ... (runMultiVariableModel remains the same) ...
 const runMultiVariableModel = async (experimentData, independentVars, dependentVars) => {
-  await new Promise(res => setTimeout(res, 1500));
-  const coefficients = {};
-  dependentVars.forEach(depVar => {
-    coefficients[depVar] = {};
-    independentVars.forEach(indepVar => {
-      coefficients[depVar][indepVar] = Math.random() * 5 - 2.5; 
-    });
-    coefficients[depVar]['Intercept'] = Math.random() * 10;
-  });
-  const predictions = experimentData.map(row => {
-    const actual = {};
-    const predicted = {};
+    // ... code from previous response ...
+    await new Promise(res => setTimeout(res, 1500));
+    const coefficients = {};
     dependentVars.forEach(depVar => {
-      actual[depVar] = row[depVar];
-      predicted[depVar] = row[depVar] * (0.8 + Math.random() * 0.4); 
+      coefficients[depVar] = {};
+      independentVars.forEach(indepVar => {
+        coefficients[depVar][indepVar] = Math.random() * 5 - 2.5; 
+      });
+      coefficients[depVar]['Intercept'] = Math.random() * 10;
     });
-    return { actual, predicted };
-  });
-  return {
-    r_squared: 0.75 + Math.random() * 0.2,
-    coefficients: coefficients,
-    predictions: predictions,
-  };
+    const predictions = experimentData.map(row => {
+      const actual = {};
+      const predicted = {};
+      dependentVars.forEach(depVar => {
+        actual[depVar] = row[depVar];
+        predicted[depVar] = row[depVar] * (0.8 + Math.random() * 0.4); 
+      });
+      return { actual, predicted };
+    });
+    return {
+      r_squared: 0.75 + Math.random() * 0.2,
+      coefficients: coefficients,
+      predictions: predictions,
+    };
 };
 
 export default function SelectModulePage() {
   const { user } = useAuthStore();
-  const location = useLocation(); // Get navigation state
+  const location = useLocation(); 
   const queryClient = useQueryClient();
-
+  
   const { setIsCollapsed } = useLayoutStore();
   useEffect(() => {
-    setIsCollapsed(true); // Close sidebar when entering this page
+    setIsCollapsed(true); 
   }, [setIsCollapsed]);
   
-  // State
   const [selectedExperiment, setSelectedExperiment] = useState(null);
-  const [isEditDataOpen, setIsEditDataOpen] = useState(false); // Edit Modal State
+  const [isEditDataOpen, setIsEditDataOpen] = useState(false); 
+  const [isCreateOpen, setIsCreateOpen] = useState(false); // <-- NEW STATE FOR CREATE MODAL
   
-  // Heatmap State
-  const [heatmapVars, setHeatmapVars] = useState({ x: '', y: '', z: '' });
+  const [heatmapSelectedVars, setHeatmapSelectedVars] = useState([]);
   
-  // Model State
   const [modelResults, setModelResults] = useState(null);
   const [modelVars, setModelVars] = useState({ independentVars: [], dependentVars: [] });
 
-  // 1. Fetch user's experiments
   const { data: experiments, isLoading: isLoadingExperiments } = useQuery({
     queryKey: ['myExperiments', user?.uid],
     queryFn: async () => {
@@ -116,7 +169,6 @@ export default function SelectModulePage() {
     enabled: !!user,
   });
 
-  // --- AUTO-SELECT LOGIC ---
   useEffect(() => {
     if (experiments && location.state?.experimentId && !selectedExperiment) {
         const targetExp = experiments.find(e => e.id === location.state.experimentId);
@@ -126,7 +178,6 @@ export default function SelectModulePage() {
     }
   }, [experiments, location.state, selectedExperiment]);
 
-  // 2. Run Model Mutation
   const { mutate: runModel, isLoading: isModelRunning } = useMutation({
     mutationFn: (variables) => 
       runMultiVariableModel(variables.data, variables.independent, variables.dependent),
@@ -136,7 +187,6 @@ export default function SelectModulePage() {
     onError: (err) => alert(`Error: ${err.message}`)
   });
 
-  // --- DATA EDITING MUTATION ---
   const { mutate: updateData, isLoading: isSavingData } = useMutation({
     mutationFn: async ({ newData, newHeaders }) => {
       const jsonData = newData.map(row => {
@@ -154,19 +204,16 @@ export default function SelectModulePage() {
         data: jsonData,
         headers: newHeaders.map(h => h.name) 
       });
-      // Return the updated data structure to update local state
       return { data: jsonData, headers: newHeaders.map(h => h.name) };
     },
     onSuccess: (updatedData) => {
       queryClient.invalidateQueries({ queryKey: ['myExperiments'] });
-      // Update local selectedExperiment to reflect changes immediately
       setSelectedExperiment(prev => ({ ...prev, ...updatedData }));
       setIsEditDataOpen(false);
     },
     onError: (err) => alert("Failed to save data: " + err.message)
   });
 
-  // Numeric headers for dropdowns
   const numericHeaders = useMemo(() => {
     if (!selectedExperiment?.data || selectedExperiment.data.length === 0) return [];
     const firstRow = selectedExperiment.data[0];
@@ -175,10 +222,9 @@ export default function SelectModulePage() {
       .map(h => ({ id: h, name: h }));
   }, [selectedExperiment]);
 
-  // Handlers
   const handleExperimentChange = (exp) => {
     setSelectedExperiment(exp);
-    setHeatmapVars({ x: '', y: '', z: '' }); 
+    setHeatmapSelectedVars([]); 
     setModelResults(null);
   };
 
@@ -195,23 +241,33 @@ export default function SelectModulePage() {
     updateData({ newData: data, newHeaders: columns });
   };
 
+  // --- CALLBACK FOR SUCCESSFUL CREATION ---
+  // This is passed to the UploadPage (we need to modify UploadPage to accept it)
+  const handleCreateSuccess = (newExperimentId) => {
+     setIsCreateOpen(false);
+     // Force a refetch of experiments so the new one appears in the list
+     queryClient.invalidateQueries(['myExperiments']);
+     // Note: In a real app, you might want to fetch the single new experiment here 
+     // and set it as 'selectedExperiment', but refetching list + manual select is safer.
+     alert("Experiment created! Please select it from the dropdown.");
+  };
+
   if (isLoadingExperiments) return <PageLoader />;
 
-  // Prepare initial data for edit modal
   const initialEditData = selectedExperiment ? selectedExperiment.data.map(row => 
     selectedExperiment.headers.map(header => row[header] !== null && row[header] !== undefined ? String(row[header]) : '')
   ) : [];
   const initialEditColumns = selectedExperiment ? selectedExperiment.headers.map((h, i) => ({ id: `col${i}`, name: h })) : [];
 
   return (
-    <div className="container mx-auto max-w-[95%] space-y-6 px-4 pb-4">
+    <div className="container mx-auto max-w-[95%] space-y-6 px-4">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
         <div>
           <h1 className="text-3xl font-bold text-secondary-darkest">Analysis Dashboard</h1>
-          <p className="text-secondary-dark mt-1">Select an experiment to unlock analysis tools.</p>
+          <p className="text-secondary-dark mt-1">Select or create an experiment to analyze.</p>
         </div>
         
-        <div className="mt-4 md:mt-0 w-full md:w-1/3 flex space-x-2">
+        <div className="mt-4 md:mt-0 w-full md:w-1/2 flex items-end gap-2">
           <div className="flex-grow">
             <Select
                 label="Active Experiment"
@@ -220,13 +276,15 @@ export default function SelectModulePage() {
                 options={experiments || []}
             />
           </div>
-          {/* Edit Button on Dashboard */}
+          {/* --- NEW CREATE BUTTON --- */}
+          <Button className="h-10 whitespace-nowrap" onClick={() => setIsCreateOpen(true)}>
+             <FaPlus className="mr-2" /> Create New
+          </Button>
+          
           {selectedExperiment && (
-              <div className="flex items-end">
-                  <Button variant="secondary" onClick={() => setIsEditDataOpen(true)} className="h-10" title="Edit Data">
-                    <FaEdit />
-                  </Button>
-              </div>
+              <Button variant="secondary" onClick={() => setIsEditDataOpen(true)} className="h-10" title="Edit Data">
+                <FaEdit />
+              </Button>
           )}
         </div>
       </div>
@@ -234,11 +292,12 @@ export default function SelectModulePage() {
       {!selectedExperiment ? (
         <div className="flex flex-col items-center justify-center h-64 bg-white  border-2 border-dashed border-secondary-DEFAULT text-secondary-dark">
           <FaChartArea className="h-12 w-12 text-gray-300 mb-3" />
-          <p>Please select an experiment from the dropdown above to begin.</p>
+          <p>Please select an experiment above or create a new one.</p>
         </div>
       ) : (
         <Tab.Group>
-          <Tab.List className="flex space-x-1 rounded-xl bg-secondary-light p-1">
+          {/* ... (Tabs and Panels code remains exactly the same as previous response) ... */}
+           <Tab.List className="flex space-x-1  bg-secondary-light p-1">
             <Tab
               className={({ selected }) =>
                 classNames(
@@ -251,7 +310,7 @@ export default function SelectModulePage() {
               }
             >
               <div className="flex items-center justify-center space-x-2">
-                <FaChartArea /> <span>Heatmap Visualizer</span>
+                <FaChartArea /> <span>Correlation Heatmap</span>
               </div>
             </Tab>
             <Tab
@@ -272,51 +331,34 @@ export default function SelectModulePage() {
           </Tab.List>
           
           <Tab.Panels className="mt-4">
-            {/* --- HEATMAP TAB --- */}
-            <Tab.Panel className="rounded-xl bg-white p-6 shadow-sm ring-white ring-opacity-60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2">
-              <h2 className="text-xl font-semibold mb-4">Live Heatmap Configuration</h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <Select
-                  label="X-Axis (Independent)"
-                  value={heatmapVars.x ? { name: heatmapVars.x } : null}
-                  onChange={(v) => setHeatmapVars(p => ({ ...p, x: v.name }))}
-                  options={numericHeaders}
-                />
-                <Select
-                  label="Y-Axis (Dependent)"
-                  value={heatmapVars.y ? { name: heatmapVars.y } : null}
-                  onChange={(v) => setHeatmapVars(p => ({ ...p, y: v.name }))}
-                  options={numericHeaders}
-                />
-                <Select
-                  label="Z-Axis (Color Value)"
-                  value={heatmapVars.z ? { name: heatmapVars.z } : null}
-                  onChange={(v) => setHeatmapVars(p => ({ ...p, z: v.name }))}
-                  options={numericHeaders}
-                />
-              </div>
+            {/* --- HEATMAP TAB (UPDATED) --- */}
+            <Tab.Panel className=" bg-white p-6 shadow-sm ring-white ring-opacity-60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                {/* Left: Variable Multi-Selector */}
+                <div className="lg:col-span-1">
+                   <HeatmapVariableList 
+                      options={numericHeaders}
+                      selected={heatmapSelectedVars}
+                      onChange={setHeatmapSelectedVars}
+                   />
+                </div>
 
-              <div className="w-full bg-gray-50  border border-gray-100 overflow-hidden">
-                {heatmapVars.x && heatmapVars.y && heatmapVars.z ? (
-                  <div className="h-[500px] w-full">
-                    <HeatmapChart
-                      data={selectedExperiment.data}
-                      xVar={heatmapVars.x}
-                      yVar={heatmapVars.y}
-                      zVar={heatmapVars.z}
-                    />
+                {/* Right: Heatmap Chart */}
+                <div className="lg:col-span-3">
+                  <div className="w-full bg-gray-50  border border-gray-100 overflow-hidden">
+                     <div className="h-[600px] w-full">
+                        <HeatmapChart
+                          data={selectedExperiment.data}
+                          selectedVariables={heatmapSelectedVars}
+                        />
+                     </div>
                   </div>
-                ) : (
-                  <div className="h-64 flex items-center justify-center text-secondary-dark">
-                    Select X, Y, and Z variables to generate the heatmap.
-                  </div>
-                )}
+                </div>
               </div>
             </Tab.Panel>
 
             {/* --- ML MODEL TAB --- */}
-            <Tab.Panel className="rounded-xl bg-white p-6 shadow-sm ring-white ring-opacity-60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2">
+            <Tab.Panel className=" bg-white p-6 shadow-sm ring-white ring-opacity-60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2">
                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                  <div className="lg:col-span-1">
                     <VariableSelector 
@@ -364,6 +406,19 @@ export default function SelectModulePage() {
           />
         </div>
         {isSavingData && <div className="text-center mt-4 text-primary-dark font-semibold"><Spinner /> Saving Changes...</div>}
+      </Modal>
+
+      {/* --- CREATE NEW EXPERIMENT MODAL --- */}
+      <Modal 
+        isOpen={isCreateOpen} 
+        onClose={() => setIsCreateOpen(false)} 
+        title="Create New Analysis"
+        maxWidth="max-w-4xl" 
+      >
+        <div className="max-h-[80vh] overflow-y-auto p-1">
+            {/* Pass a special prop 'onSuccessOverride' to UploadPage to intercept the navigation */}
+            <UploadPage onSuccessOverride={handleCreateSuccess} isModalMode={true} />
+        </div>
       </Modal>
 
     </div>
