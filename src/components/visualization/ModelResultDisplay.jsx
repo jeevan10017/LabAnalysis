@@ -4,7 +4,6 @@ import Plot from 'react-plotly.js';
 export default function ModelResultDisplay({ results, independentVars, dependentVars }) {
   const { r_squared, predictions, coefficients } = results;
 
-  // Use the first dependent variable for the plot
   const plotVar = dependentVars[0];
   const plotData = predictions.map(p => ({
     actual: p.actual[plotVar],
@@ -13,8 +12,7 @@ export default function ModelResultDisplay({ results, independentVars, dependent
 
   return (
     <div className="space-y-6">
-      {/* 1. Key Metrics */}
-      <div className="rounded-lg bg-white p-6 shadow-sm">
+      <div className=" bg-white p-6 shadow-sm">
         <h3 className="text-xl font-semibold text-gray-800">Model Results</h3>
         <div className="mt-4">
           <span className="text-lg text-secondary-dark">R-Squared Score:</span>
@@ -27,8 +25,7 @@ export default function ModelResultDisplay({ results, independentVars, dependent
         </div>
       </div>
 
-      {/* 2. Coefficients Table */}
-      <div className="rounded-lg bg-white p-6 shadow-sm">
+      <div className=" bg-white p-6 shadow-sm">
         <h3 className="text-xl font-semibold text-gray-800 mb-4">Model Coefficients</h3>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-secondary-DEFAULT">
@@ -56,24 +53,21 @@ export default function ModelResultDisplay({ results, independentVars, dependent
         </div>
       </div>
 
-      {/* 3. Prediction Plot */}
-      <div className="rounded-lg bg-white p-6 shadow-sm">
+      <div className=" bg-white p-6 shadow-sm">
         <h3 className="text-xl font-semibold text-gray-800 mb-4">
           Actual vs. Predicted Plot (for {plotVar})
         </h3>
         <div className="w-full aspect-video">
           <Plot
             data={[
-              // Scatter plot of actual vs. predicted
               {
                 x: plotData.map(p => p.actual),
                 y: plotData.map(p => p.predicted),
                 mode: 'markers',
                 type: 'scatter',
                 name: 'Predictions',
-                marker: { color: '#00796B' }, // Primary color
+                marker: { color: '#00796B' },
               },
-              // Ideal 45-degree line (x=y)
               {
                 x: [Math.min(...plotData.map(p => p.actual)), Math.max(...plotData.map(p => p.actual))],
                 y: [Math.min(...plotData.map(p => p.actual)), Math.max(...plotData.map(p => p.actual))],

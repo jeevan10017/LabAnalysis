@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import Button from '../common/Button';
 
-// This regex finds valid JS variable names
 const variableRegex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 
 export default function CustomFormulaModal({ isOpen, onClose, onSave, mappedKeys }) {

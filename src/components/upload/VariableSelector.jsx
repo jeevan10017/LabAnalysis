@@ -13,8 +13,11 @@ const CheckboxList = ({ title, options, selected, onChange }) => {
 
   return (
     <div>
-      <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-      <div className="mt-2 space-y-2 max-h-48 overflow-y-auto rounded-md border border-secondary-DEFAULT p-4">
+      {/* Reduced font size: text-lg -> text-sm */}
+      <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+      
+      {/* Added 'scrollbar-thin' class */}
+      <div className="mt-2 space-y-2 max-h-48 overflow-y-auto  border border-secondary-DEFAULT p-3 scrollbar-thin">
         {options.map((option) => (
           <div key={option} className="flex items-center">
             <input
@@ -24,7 +27,8 @@ const CheckboxList = ({ title, options, selected, onChange }) => {
               onChange={() => handleToggle(option)}
               className="h-4 w-4 rounded border-secondary-DEFAULT text-primary focus:ring-primary"
             />
-            <label htmlFor={`cb-${option}`} className="ml-3 block text-sm font-medium text-gray-700">
+            {/* Reduced option font size slightly: text-sm -> text-xs */}
+            <label htmlFor={`cb-${option}`} className="ml-3 block text-xs font-medium text-gray-700">
               {option}
             </label>
           </div>
@@ -52,9 +56,12 @@ export default function VariableSelector({ experiment, onProceed }) {
   const canProceed = independentVars.length > 0 && dependentVars.length > 0;
 
   return (
-    <div className="rounded-lg bg-white p-6 shadow-sm space-y-6">
-      <h2 className="text-xl font-semibold">Configure Multi-Variable Model</h2>
-      <p className="text-sm text-secondary-dark">
+    <div className=" bg-white p-2 shadow-sm space-y-6">
+      {/* Reduced font size: text-xl -> text-lg */}
+      <h2 className="text-lg font-semibold text-gray-900">Configure Multi-Variable Model</h2>
+      
+      {/* Reduced font size: text-sm -> text-xs */}
+      <p className="text-xs text-secondary-dark">
         Select one or more input variables (Independent) to predict one or more output variables (Dependent).
       </p>
       
@@ -74,7 +81,12 @@ export default function VariableSelector({ experiment, onProceed }) {
       </div>
 
       <div className="pt-4 text-center">
-        <Button onClick={() => onProceed({ independentVars, dependentVars })} disabled={!canProceed}>
+        {/* Applied text-xs via className to override Button default */}
+        <Button 
+          onClick={() => onProceed({ independentVars, dependentVars })} 
+          disabled={!canProceed}
+          className="text-xs"
+        >
           Do you want to proceed with the above selection?
         </Button>
       </div>

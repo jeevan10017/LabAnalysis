@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, Fragment } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom'; // Added useNavigate
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -8,7 +8,7 @@ import { DataGrid } from '../components/visualization/DataGrid';
 import Button from '../components/common/Button';
 import { DynamicChart } from '../components/visualization/DynamicChart';
 import { Listbox } from '@headlessui/react';
-import { FaChevronDown, FaPrint, FaDownload, FaInfoCircle, FaFileExcel } from 'react-icons/fa'; // NEW ICON
+import { FaChevronDown, FaPrint, FaDownload, FaInfoCircle, FaFileExcel, FaEdit, FaChartLine } from 'react-icons/fa'; // Added FaChartLine
 import { utils, writeFile } from 'xlsx';
 import PrintModal from '../components/common/PrintModal'; 
 import jsPDF from 'jspdf';
@@ -16,19 +16,22 @@ import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import Switch from '../components/common/Switch';
 import PageLoader from '../components/common/PageLoader';
+import { Modal } from '../components/common/Modal'; 
+import ManualDataEntry from '../components/upload/ManualDataEntry';
+import { useLayoutStore } from '../hooks/useLayoutStore';
 
-// Select component with new theme
+// ... (Select component remains the same) ...
 const Select = ({ label, value, onChange, options }) => (
   <Listbox value={value} onChange={onChange}>
     <div className="relative">
       <Listbox.Label className="block text-sm font-medium text-gray-700">{label}</Listbox.Label>
-      <Listbox.Button className="relative mt-1 w-full cursor-default rounded-md border border-secondary-DEFAULT bg-white py-2 pl-3 pr-10 text-left shadow-sm focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm">
+      <Listbox.Button className="relative mt-1 w-full cursor-default  border border-secondary-DEFAULT bg-white py-2 pl-3 pr-10 text-left shadow-sm focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm">
         <span className="block truncate">{value || 'Select an option'}</span>
         <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
           <FaChevronDown className="h-5 w-5 text-gray-400" />
         </span>
       </Listbox.Button>
-      <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
+      <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto  bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
         {options.map(option => (
           <Listbox.Option
             key={option}
@@ -65,18 +68,24 @@ const getExperiment = async (id) => {
 
 export default function ExperimentDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate(); // Hook for navigation
   
   const graphRef = useRef();
   const theoryRef = useRef();
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isEditDataOpen, setIsEditDataOpen] = useState(false); 
   const queryClient = useQueryClient();
+
+  const { setIsCollapsed } = useLayoutStore();
+  useEffect(() => {
+    setIsCollapsed(true); 
+  }, [setIsCollapsed]);
 
   const { data: experiment, isLoading, error } = useQuery({
     queryKey: ['experiment', id],
     queryFn: () => getExperiment(id),
     enabled: !!id,
   });
-
   const { mutate: updateVisibility, isLoading: isUpdating } = useMutation({
     mutationFn: async (newStatus) => {
       const docRef = doc(db, 'experiments', id);
@@ -91,6 +100,31 @@ export default function ExperimentDetailPage() {
       console.error(err);
       alert("Failed to update status. Please try again.");
     }
+  });
+
+  const { mutate: updateData, isLoading: isSavingData } = useMutation({
+    mutationFn: async ({ newData, newHeaders }) => {
+      const jsonData = newData.map(row => {
+        let rowObj = {};
+        newHeaders.forEach((header, index) => {
+          const val = row[index];
+          const numVal = parseFloat(val);
+          rowObj[header.name] = !isNaN(numVal) && String(val).trim() !== '' ? numVal : val;
+        });
+        return rowObj;
+      });
+      
+      const docRef = doc(db, 'experiments', id);
+      await updateDoc(docRef, { 
+        data: jsonData,
+        headers: newHeaders.map(h => h.name) 
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['experiment', id] });
+      setIsEditDataOpen(false);
+    },
+    onError: (err) => alert("Failed to save data: " + err.message)
   });
 
   const [xAxisKey, setXAxisKey] = useState('');
@@ -113,12 +147,18 @@ export default function ExperimentDetailPage() {
     }
   }, [numericHeaders]);
 
+  const handleDownload = () => {
+    const ws = utils.json_to_sheet(experiment.data);
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'Data');
+    writeFile(wb, `${experiment.title || 'experiment'}.xlsx`);
+  };
+  
   const handleDownloadXLSX = () => {
-    // Open the original uploaded file URL in a new tab for download
     if (experiment?.fileURL) {
-      window.open(experiment.fileURL, '_blank');
+        window.open(experiment.fileURL, '_blank');
     } else {
-      alert('Original XLSX file not found for download.');
+        alert('Original XLSX file not found for download.');
     }
   };
 
@@ -129,7 +169,15 @@ export default function ExperimentDetailPage() {
     writeFile(wb, `${experiment.title || 'experiment'}.csv`);
   };
 
-  // --- PROFESSIONAL PDF REPORT GENERATION (FIXED) ---
+  const handleDataSave = ({ data, columns }) => {
+    updateData({ newData: data, newHeaders: columns });
+  };
+  
+  // --- NEW HANDLER FOR NAVIGATION ---
+  const handleGoToAnalysis = () => {
+    navigate('/module', { state: { experimentId: id } });
+  };
+
   const handleGeneratePdf = async ({ includeGraph, includeTable, includeTheory }) => {
     const doc = new jsPDF('p', 'mm', 'a4');
     let yOffset = 20;
@@ -137,7 +185,6 @@ export default function ExperimentDetailPage() {
     const pdfWidth = doc.internal.pageSize.getWidth() - (margin * 2);
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    // Helper function to add text and manage page breaks
     const addText = (text, size, isBold, color = [0, 0, 0]) => {
       if (yOffset > pageHeight - margin) { doc.addPage(); yOffset = margin; }
       doc.setFontSize(size);
@@ -148,7 +195,6 @@ export default function ExperimentDetailPage() {
       yOffset += (lines.length * (size * 0.4)) + 5;
     };
     
-    // Helper function to add canvas elements
     const addElement = async (element) => {
       if (element) {
         const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
@@ -175,7 +221,6 @@ export default function ExperimentDetailPage() {
       }
     };
 
-    // --- COVER PAGE ---
     addText(experiment.title, 24, true, [0, 121, 107]);
     yOffset += 5;
     addText('Laboratory Experiment Report', 14, false, [100, 100, 100]);
@@ -190,7 +235,7 @@ export default function ExperimentDetailPage() {
     doc.setFont(undefined, 'bold');
     doc.text('Author:', margin, yOffset);
     doc.setFont(undefined, 'normal');
-    doc.text(experiment.authorName || 'N/A', margin + 35, yOffset);
+    doc.text(experiment.authorName || 'N/A', margin + 25, yOffset);
     yOffset += 8;
     
     doc.setFont(undefined, 'bold');
@@ -207,7 +252,6 @@ export default function ExperimentDetailPage() {
       addText(experiment.description, 10, false, [80, 80, 80]);
     }
     
-    // --- CONTENT PAGE ---
     doc.addPage();
     yOffset = margin;
     
@@ -239,7 +283,6 @@ export default function ExperimentDetailPage() {
       if (yOffset > pageHeight - 60) { doc.addPage(); yOffset = margin; }
       addText('Experimental Data', 16, true, [0, 121, 107]);
       
-      // --- PDF TABLE FIX: Use autoTable directly from JSON ---
       autoTable(doc, {
         startY: yOffset,
         head: [experiment.headers],
@@ -255,11 +298,9 @@ export default function ExperimentDetailPage() {
         alternateRowStyles: { fillColor: [245, 245, 245] },
         margin: { left: margin, right: margin },
       });
-      // Update yOffset to be after the table
       yOffset = (doc).lastAutoTable.finalY + 15;
     }
     
-    // --- FOOTER ---
     const pageCount = (doc).internal.getNumberOfPages();
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
@@ -286,7 +327,7 @@ export default function ExperimentDetailPage() {
     if (calculations.length === 0) return null;
 
     return (
-      <div ref={theoryRef} className="mt-6 rounded-lg bg-primary-light p-4">
+      <div ref={theoryRef} className="mt-6  bg-primary-light p-4">
         <h3 className="flex items-center text-lg font-semibold text-primary-dark">
           <FaInfoCircle className="mr-2" /> Analysis & Calculations
         </h3>
@@ -307,9 +348,15 @@ export default function ExperimentDetailPage() {
   if (isLoading) return <PageLoader />;
   if (error) return <div className="text-red-500">Error: {error.message}</div>;
 
+  // Prepare initial data for ManualDataEntry
+  const initialEditData = experiment.data.map(row => 
+    experiment.headers.map(header => row[header] !== null && row[header] !== undefined ? String(row[header]) : '')
+  );
+  const initialEditColumns = experiment.headers.map((h, i) => ({ id: `col${i}`, name: h }));
+
   return (
     <>
-      <div className="container mx-auto max-w-5xl">
+      <div className="container mx-auto max-w-[95%]">
         <div className="mb-6 flex flex-col items-start justify-between sm:flex-row sm:items-center">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{experiment.title}</h1>
@@ -326,24 +373,31 @@ export default function ExperimentDetailPage() {
               {isUpdating && <Spinner />}
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3 sm:mt-0"> {/* Use flex-wrap and gap */}
+          <div className="mt-4 flex flex-wrap gap-3 sm:mt-0">
+            {/* --- ADVANCED ANALYSIS BUTTON --- */}
+            <Button onClick={handleGoToAnalysis} className="bg-primary-dark hover:bg-primary">
+              <FaChartLine className="mr-2" /> Advanced Analysis
+            </Button>
+            
+            <Button variant="ghost" onClick={() => setIsEditDataOpen(true)}>
+              <FaEdit className="mr-2" /> Edit Data
+            </Button>
             {experiment?.fileURL && (
                 <Button variant="secondary" onClick={handleDownloadXLSX}>
-                    <FaFileExcel className="mr-2" /> Original .xlsx
+                    <FaFileExcel className="mr-2" /> Original
                 </Button>
             )}
             <Button variant="secondary" onClick={handleDownloadCSV}>
-              <FaDownload className="mr-2" /> Extract (.csv)
+              <FaDownload className="mr-2" /> Extract
             </Button>
-            <Button onClick={() => setIsPrintModalOpen(true)}>
-              <FaPrint className="mr-2" /> Generate Report
+            <Button variant="secondary" onClick={() => setIsPrintModalOpen(true)}>
+              <FaPrint className="mr-2" /> Report
             </Button>
           </div>
         </div>
         
-        <div className="rounded-lg bg-white p-6 shadow-sm">
+        <div className=" bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold">Data Visualization</h2>
-          
           <div className="my-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Select
               label="X-Axis"
@@ -358,7 +412,6 @@ export default function ExperimentDetailPage() {
               options={numericHeaders.filter(h => h !== xAxisKey)}
             />
           </div>
-          
           <div ref={graphRef} className="w-full aspect-video">
             <DynamicChart
               data={experiment.data}
@@ -370,7 +423,7 @@ export default function ExperimentDetailPage() {
         
         {experiment?.analysis?.calculations?.length > 0 && <ExplanationBox />}
 
-        <div className="mt-8 rounded-lg bg-white p-6 shadow-sm">
+        <div className="mt-8  bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold">Full Data Table</h2>
           <div className="mt-4 overflow-x-auto">
             <DataGrid
@@ -386,6 +439,24 @@ export default function ExperimentDetailPage() {
         onClose={() => setIsPrintModalOpen(false)}
         onGeneratePdf={handleGeneratePdf}
       />
+
+      {/* --- EDIT DATA MODAL --- */}
+      <Modal 
+        isOpen={isEditDataOpen} 
+        onClose={() => setIsEditDataOpen(false)} 
+        title="Edit Experiment Data"
+        maxWidth="max-w-[90vw]" // Wide modal
+      >
+        <div className="h-[80vh] overflow-y-auto p-1">
+          <ManualDataEntry 
+            onSubmit={handleDataSave}
+            initialData={initialEditData}
+            initialColumns={initialEditColumns}
+          />
+        </div>
+        {isSavingData && <div className="text-center mt-4 text-primary-dark font-semibold"><Spinner /> Saving Changes...</div>}
+      </Modal>
+
     </>
   );
 }

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
+import { useLayoutStore } from '../../hooks/useLayoutStore';
 
 export default function Layout({ children }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false); // For mobile
-  const [isCollapsed, setIsCollapsed] = useState(false); // For desktop
+  // Use global store instead of local state
+  const { sidebarOpen, setSidebarOpen, isCollapsed, setIsCollapsed } = useLayoutStore();
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -37,7 +38,8 @@ export default function Layout({ children }) {
 
         {/* Page Content */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8">
-          <div className="mx-auto max-w-7xl">
+          {/* Removed fixed max-w container here to allow pages to control their own width */}
+          <div className="w-full h-full">
             {children}
           </div>
         </main>

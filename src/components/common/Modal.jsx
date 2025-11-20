@@ -2,7 +2,7 @@ import React, { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { IoClose } from 'react-icons/io5';
 
-export function Modal({ isOpen, onClose, title, children }) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }) {
   return (
     <Transition appear show={isOpen} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
@@ -29,7 +29,10 @@ export function Modal({ isOpen, onClose, title, children }) {
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-md transform overflow-hidden  bg-white p-6 text-left align-middle shadow-xl transition-all">
+              {/* Updated: Uses the maxWidth prop dynamically */}
+              <Dialog.Panel 
+                className={`w-full ${maxWidth} transform overflow-hidden  bg-white p-6 text-left align-middle shadow-xl transition-all`}
+              >
                 <Dialog.Title
                   as="h3"
                   className="text-lg font-semibold leading-6 text-gray-900"

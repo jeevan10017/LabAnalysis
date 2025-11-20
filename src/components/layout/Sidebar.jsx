@@ -17,7 +17,7 @@ const NavItem = ({ to, icon, isCollapsed, children, onClick }) => (
     end
     onClick={onClick}
     className={({ isActive }) => `
-      flex items-center h-12 mx-2 px-4 rounded-lg
+      flex items-center h-12 mx-2 px-4 
       transition-all duration-200 ease-in-out
       ${isCollapsed ? 'justify-center' : 'justify-start'}
       ${

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { FaPlus, FaTrash, FaArrowRight } from 'react-icons/fa';
 import Button from '../common/Button';
 
-// Set default empty state
 const defaultColumns = [
   { id: 'col1', name: 'Pressure' },
   { id: 'col2', name: 'Volume' },
@@ -20,7 +19,6 @@ export default function ManualDataEntry({
   const [columns, setColumns] = useState(initialColumns || defaultColumns);
   const [data, setData] = useState(initialData || defaultData);
 
-  // This effect updates the table if the props change (e.g., after OCR scan)
   useEffect(() => {
     if (initialColumns) setColumns(initialColumns);
     if (initialData) setData(initialData);
@@ -63,71 +61,80 @@ export default function ManualDataEntry({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full space-y-4 rounded-lg bg-white p-6 shadow">
-      {/* Show a title based on whether data was scanned or not */}
+    <form onSubmit={handleSubmit} className="w-full space-y-4  bg-white p-2 ">
       <h3 className="text-lg font-semibold text-gray-800">
-        {initialData ? 'Review & Correct Scanned Data' : 'Enter Data Manually'}
+        {initialData ? '' : 'Enter Data Manually'}
       </h3>
       {initialData && (
         <p className="text-sm text-secondary-dark -mt-2">
-          The data from your image has been pre-filled. Please review and correct any errors.
+          You can edit values, add rows, or change column names below.
         </p>
       )}
-      <div className="overflow-x-auto">
-        <table className="min-w-full">
-          <thead>
+      <div className="overflow-x-auto border border-secondary-DEFAULT ">
+        <table className="min-w-full divide-y divide-secondary-DEFAULT">
+          <thead className="bg-secondary-light">
             <tr>
               {columns.map((col, index) => (
-                <th key={col.id} className="p-2">
+                <th key={col.id} className="p-2 min-w-[150px] relative group border-r border-secondary-DEFAULT last:border-r-0">
                   <input
                     type="text"
                     value={col.name}
                     onChange={(e) => handleColumnNameChange(index, e.target.value)}
-                    className="w-full  border-secondary-DEFAULT p-2 text-sm font-medium"
+                    className="w-full  border-transparent bg-transparent p-1 text-sm font-bold text-gray-700 focus:border-primary focus:bg-white focus:ring-1 focus:ring-primary"
                     placeholder="Column Name"
                   />
-                  <Button type="button" variant="ghost" className="p-1 -ml-1 text-red-500" onClick={() => handleRemoveColumn(index)}>
-                    <FaTrash size={12} />
-                  </Button>
+                  <button
+                    type="button"
+                    className="absolute top-1 right-1 p-1 text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
+                    onClick={() => handleRemoveColumn(index)}
+                    title="Remove Column"
+                  >
+                    <FaTrash size={10} />
+                  </button>
                 </th>
               ))}
-              <th className="p-2">
-                <Button type="button" variant="secondary" onClick={handleAddColumn}>
-                  <FaPlus />
+              <th className="p-2 w-12 bg-secondary-light">
+                <Button type="button" variant="ghost" className="w-full justify-center" onClick={handleAddColumn} title="Add Column">
+                  <FaPlus size={12} />
                 </Button>
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-secondary-DEFAULT bg-white">
             {data.map((row, rowIndex) => (
               <tr key={rowIndex}>
                 {row.map((cell, colIndex) => (
-                  <td key={colIndex} className="p-1">
+                  <td key={colIndex} className="p-1 min-w-[150px] border-r border-secondary-DEFAULT last:border-r-0">
                     <input
                       type="text"
                       value={cell}
                       onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
-                      className="w-full  border-secondary-DEFAULT p-2 text-sm"
-                      placeholder="Value"
+                      className="w-full  border-transparent p-1 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+                      placeholder="-"
                     />
                   </td>
                 ))}
-                <td className="p-1">
-                  <Button type="button" variant="ghost" className="p-1 text-red-500" onClick={() => handleRemoveRow(rowIndex)}>
-                    <FaTrash size={14} />
-                  </Button>
+                <td className="p-1 w-12 text-center">
+                  <button 
+                    type="button" 
+                    className="text-gray-400 hover:text-red-500 transition-colors"
+                    onClick={() => handleRemoveRow(rowIndex)}
+                    title="Remove Row"
+                  >
+                    <FaTrash size={12} />
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div className="flex justify-between">
+      <div className="flex justify-between items-center pt-4">
         <Button type="button" variant="secondary" onClick={handleAddRow}>
           <FaPlus className="mr-2" /> Add Row
         </Button>
         <Button type="submit" className="w-full max-w-xs">
-          Process Data <FaArrowRight className="ml-2" />
+          Save Data <FaArrowRight className="ml-2" />
         </Button>
       </div>
     </form>

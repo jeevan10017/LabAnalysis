@@ -12,7 +12,6 @@ import { Modal } from '../components/common/Modal';
 import Switch from '../components/common/Switch';
 import PageLoader from '../components/common/PageLoader';
 
-// Use the proper Modal component
 const EditModal = ({ experiment, onClose, onSave }) => {
   const [title, setTitle] = useState(experiment.title);
   const [desc, setDesc] = useState(experiment.description);
@@ -20,7 +19,6 @@ const EditModal = ({ experiment, onClose, onSave }) => {
 
   const handleSave = async () => {
     setIsSaving(true);
-    // Note: The mutation expects { id, updates }
     await onSave({ id: experiment.id, updates: { title, description: desc } });
     setIsSaving(false);
   };
@@ -58,7 +56,6 @@ const EditModal = ({ experiment, onClose, onSave }) => {
     </Modal>
   );
 };
-
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
@@ -116,64 +113,65 @@ export default function DashboardPage() {
   if (isLoading) return <PageLoader />;
 
   return (
-    // Increased max-width to give more room for the buttons
     <div className="container mx-auto max-w-5xl"> 
       <h1 className="mb-6 text-3xl font-bold">My Experiment History</h1>
       <div className="space-y-4">
         {experiments && experiments.length > 0 ? (
-          experiments.map(exp => (
-            <div key={exp.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-lg bg-white p-5 shadow-sm">
-              {/* --- LEFT SIDE (Title & Date) --- */}
-              <div>
-                <h3 className="text-lg font-semibold text-primary-dark">{exp.title}</h3>
-                <p className="text-sm text-secondary-dark mt-1">
-                  {new Date(exp.createdAt?.toDate()).toLocaleString()}
-                </p>
-              </div>
-              
-              {/* --- RIGHT SIDE (Toggle & Buttons) --- */}
-              <div className="flex items-center space-x-3 mt-3 sm:mt-0">
-                {/* --- MOVED TOGGLE SWITCH HERE --- */}
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    enabled={exp.isPublic}
-                    onChange={(newStatus) => {
-                      toggleVisibilityMutation.mutate({ id: exp.id, newStatus });
-                    }}
-                    srLabel={`Toggle ${exp.title} visibility`}
-                  />
-                  <span className="text-xs font-medium text-gray-600">
-                    {exp.isPublic ? 'Public' : 'Private'}
-                  </span>
-                  {toggleVisibilityMutation.isLoading &&
-                    toggleVisibilityMutation.variables?.id === exp.id && 
-                    <Spinner />}
+          experiments.map(exp => {
+            // Check if THIS specific experiment is toggling
+            const isToggling = toggleVisibilityMutation.isLoading && 
+                               toggleVisibilityMutation.variables?.id === exp.id;
+
+            return (
+              <div key={exp.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between  bg-white p-5 shadow-sm">
+                <div>
+                  <h3 className="text-lg font-semibold text-primary-dark">{exp.title}</h3>
+                  <p className="text-sm text-secondary-dark mt-1">
+                    {new Date(exp.createdAt?.toDate()).toLocaleString()}
+                  </p>
                 </div>
+                
+                <div className="flex items-center space-x-3 mt-3 sm:mt-0">
+                  {/* Toggle Switch */}
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      // FIX: Force boolean with !!
+                      enabled={!!exp.isPublic}
+                      disabled={isToggling}
+                      onChange={(newStatus) => {
+                        toggleVisibilityMutation.mutate({ id: exp.id, newStatus });
+                      }}
+                      srLabel={`Toggle ${exp.title} visibility`}
+                    />
+                    <span className="text-xs font-medium text-gray-600 min-w-[40px]">
+                      {exp.isPublic ? 'Public' : 'Private'}
+                    </span>
+                    {isToggling && <Spinner />}
+                  </div>
 
-                {/* --- ADDED DIVIDER --- */}
-                <div className="h-6 w-px bg-secondary-DEFAULT"></div>
+                  <div className="h-6 w-px bg-secondary-DEFAULT"></div>
 
-                {/* --- ACTION BUTTONS --- */}
-                <Link to={`/experiment/${exp.id}`}>
-                  <Button variant="ghost" aria-label="View">
-                    <FaEye className="mr-2" /> View
+                  <Link to={`/experiment/${exp.id}`}>
+                    <Button variant="ghost" aria-label="View">
+                      <FaEye className="mr-2" /> View
+                    </Button>
+                  </Link>
+                  <Button variant="ghost" aria-label="Edit" onClick={() => setEditingExperiment(exp)}>
+                    <FaEdit className="text-gray-600" />
                   </Button>
-                </Link>
-                <Button variant="ghost" aria-label="Edit" onClick={() => setEditingExperiment(exp)}>
-                  <FaEdit className="text-gray-600" />
-                </Button>
-                <Button variant="ghost" aria-label="Delete" onClick={() => {
-                  if (window.confirm(`Are you sure you want to delete "${exp.title}"?`)) {
-                    deleteMutation.mutate(exp);
-                  }
-                }}>
-                  <FaTrash className="text-red-600" />
-                </Button>
+                  <Button variant="ghost" aria-label="Delete" onClick={() => {
+                    if (window.confirm(`Are you sure you want to delete "${exp.title}"?`)) {
+                      deleteMutation.mutate(exp);
+                    }
+                  }}>
+                    <FaTrash className="text-red-600" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
-          <div className="text-center p-10 bg-white rounded-lg shadow-sm">
+          <div className="text-center p-10 bg-white  shadow-sm">
             <p className="text-secondary-dark">You haven't uploaded any experiments yet.</p>
             <Link to="/upload">
               <Button className="mt-4">Upload your first experiment</Button>

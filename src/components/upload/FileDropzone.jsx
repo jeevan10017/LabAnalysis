@@ -20,7 +20,7 @@ export default function FileDropzone({ onFileAccepted }) {
   });
 
   return (
-    <div className="w-full bg-white p-6 shadow rounded-lg">
+    <div className="w-full bg-white p-6 shadow ">
       <h3 className="text-lg font-semibold text-gray-800 mb-4">
         Upload Your Data File
       </h3>
@@ -28,7 +28,7 @@ export default function FileDropzone({ onFileAccepted }) {
       <div
         {...getRootProps()}
         className={`
-          border-2 border-dashed rounded-lg p-12 text-center cursor-pointer
+          border-2 border-dashed  p-12 text-center cursor-pointer
           transition-all duration-200 ease-in-out
           ${isDragActive 
             ? 'border-primary bg-primary-light' 

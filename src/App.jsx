@@ -1,3 +1,4 @@
+import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -8,10 +9,8 @@ import ExperimentDetailPage from './pages/ExperimentDetailPage';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { useAuthStore } from './hooks/useAuthStore';
-import PageLoader from './components/common/PageLoader'; // Use PageLoader
-import React from 'react';
-// --- NEW ---
-import SelectModulePage from './pages/SelectModulePage';
+import PageLoader from './components/common/PageLoader';
+import SelectModulePage from './pages/SelectModulePage'; 
 
 function App() {
   const { loading } = useAuthStore();
