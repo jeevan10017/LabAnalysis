@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import Plot from 'react-plotly.js';
 
 // Helper function to calculate Pearson Correlation Coefficient
-// Returns a value between -1 and 1 (we will map to 0-1 absolute dependency)
 const calculateCorrelation = (xArray, yArray) => {
   const n = xArray.length;
   if (n !== yArray.length || n === 0) return 0;
@@ -21,36 +20,28 @@ const calculateCorrelation = (xArray, yArray) => {
 };
 
 export default function HeatmapChart({ data, selectedVariables }) {
-  // Calculate the matrix whenever data or selection changes
   const { zValues, xLabels, yLabels } = useMemo(() => {
     if (!selectedVariables || selectedVariables.length === 0) {
       return { zValues: [], xLabels: [], yLabels: [] };
     }
 
-    // 1. Extract data columns for selected variables
     const columnsData = {};
     selectedVariables.forEach(key => {
       columnsData[key] = data.map(row => {
         const val = row[key];
-        // Ensure we only use numbers
         return typeof val === 'number' ? val : 0; 
       });
     });
 
-    // 2. Build the Correlation Matrix
     const matrix = [];
     
-    // Loop for Y-axis (Rows)
     selectedVariables.forEach(yVar => {
       const row = [];
-      // Loop for X-axis (Columns)
       selectedVariables.forEach(xVar => {
         if (xVar === yVar) {
-          row.push(1); // Diagonal is always 1 (Correlation with self)
+          row.push(1); 
         } else {
           const corr = calculateCorrelation(columnsData[xVar], columnsData[yVar]);
-          // User asked for dependency (0 to 1). 
-          // We take absolute value because -0.9 is a strong dependency, just inverse.
           row.push(Math.abs(corr)); 
         }
       });
@@ -60,7 +51,7 @@ export default function HeatmapChart({ data, selectedVariables }) {
     return { 
       zValues: matrix, 
       xLabels: selectedVariables, 
-      yLabels: selectedVariables // Correlation matrix is symmetric
+      yLabels: selectedVariables 
     };
   }, [data, selectedVariables]);
 
@@ -80,12 +71,14 @@ export default function HeatmapChart({ data, selectedVariables }) {
           x: xLabels,
           y: yLabels,
           type: 'heatmap',
-          colorscale: 'Blues', // Light = Low, Dark = High (as requested)
+          // 'Viridis' is the modern scientific standard (Purple -> Yellow)
+          // Other professional options: 'Magma', 'Plasma', 'Inferno'
+          colorscale: 'Viridis', 
           showscale: true,
           zmin: 0,
           zmax: 1,
-          xgap: 2, // Small gap between boxes
-          ygap: 2,
+          xgap: 1,
+          ygap: 1,
           hoverongaps: false,
           hovertemplate: 
             '<b>%{y}</b> vs <b>%{x}</b><br>' +
@@ -93,18 +86,21 @@ export default function HeatmapChart({ data, selectedVariables }) {
         },
       ]}
       layout={{
-        title: 'Variable Dependency Matrix',
+        title: {
+          text: 'Variable Dependency Matrix',
+          font: { size: 18, color: '#333' }
+        },
         autosize: true,
         xaxis: { 
           automargin: true, 
-          tickangle: -45, // Angle labels if they are long
+          tickangle: -45,
           side: 'bottom'
         },
         yaxis: { 
           automargin: true,
-          autorange: 'reversed' // Standard matrix view (top-left to bottom-right)
+          autorange: 'reversed' 
         },
-        margin: { t: 50, l: 100, r: 50, b: 100 }, // Add margin for labels
+        margin: { t: 60, l: 100, r: 50, b: 100 },
       }}
       useResizeHandler={true}
       style={{ width: '100%', height: '100%' }}
