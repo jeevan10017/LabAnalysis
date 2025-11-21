@@ -159,7 +159,7 @@ const FinalizeExperiment = ({ onSave, onCancel }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full space-y-4  bg-white p-6 shadow">
+    <form onSubmit={handleSubmit} className="w-full space-y-4  bg-white p-2">
       <h3 className="text-lg font-semibold text-gray-800">Save Your Experiment</h3>
       <div>
         <label htmlFor="title" className="block text-sm font-medium text-gray-700">Title</label>
