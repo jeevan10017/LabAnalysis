@@ -22,7 +22,7 @@ const NavItem = ({ to, icon, isCollapsed, children, onClick }) => (
       ${isCollapsed ? 'justify-center' : 'justify-start'}
       ${
         isActive
-          ? 'bg-primary text-white shadow-sm'
+          ? 'bg-primary text-white '
           : 'text-gray-700 hover:bg-gray-100 hover:text-primary'
       }
     `}
@@ -52,7 +52,7 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
       className={`
         fixed inset-y-0 left-0 z-40
         flex flex-col
-        bg-white shadow-lg
+        bg-white 
         transition-all duration-300 ease-in-out
         ${isCollapsed ? 'w-20' : 'w-64'}
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
